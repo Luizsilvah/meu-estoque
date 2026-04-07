@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 📦 Meu Estoque
 
-## Getting Started
+Sistema web de gestão de estoque desenvolvido para uso real em pequeno negócio. Controle completo de produtos, movimentações de entrada e saída, e dashboard com dados em tempo real.
 
-First, run the development server:
+🔗 **Acesse o app:** [meu-estoque-swart.vercel.app](https://meu-estoque-swart.vercel.app)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## 🚀 Funcionalidades
+
+- **Dashboard** com visão geral do estoque em tempo real
+- **Cadastro de produtos** com categorias e fornecedores
+- **Movimentações** de entrada e saída com histórico
+- **Filtros avançados** por produto, categoria e data
+- **147 produtos reais** cadastrados e em uso
+- **Assistente IA** integrado via Claude API (Anthropic)
+
+---
+
+## 🛠️ Tecnologias
+
+| Camada | Tecnologia |
+|--------|-----------|
+| Frontend | Next.js 16, TypeScript, Tailwind CSS |
+| Backend | Next.js API Routes (REST) |
+| Banco de Dados | Supabase (PostgreSQL) |
+| IA | Anthropic Claude API |
+| Deploy | Vercel |
+| Versionamento | Git + GitHub |
+
+---
+
+## 📁 Estrutura do Projeto
+
+```
+meu-estoque/
+├── app/
+│   ├── api/          # Rotas da API (server-side)
+│   ├── dashboard/    # Página do dashboard
+│   ├── estoque/      # Visualização do estoque
+│   └── movimentos/   # Entrada e saída
+├── components/       # Componentes reutilizáveis
+├── lib/              # Configuração do Supabase
+└── public/           # Arquivos estáticos
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## ⚙️ Como rodar localmente
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Pré-requisitos
+- Node.js 18+
+- Conta no [Supabase](https://supabase.com)
+- Chave de API da [Anthropic](https://anthropic.com)
 
-## Learn More
+### Passo a passo
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# 1. Clone o repositório
+git clone https://github.com/Luizsilvach/meu-estoque.git
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# 2. Entre na pasta
+cd meu-estoque
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# 3. Instale as dependências
+npm install
 
-## Deploy on Vercel
+# 4. Configure as variáveis de ambiente
+cp .env.example .env.local
+# Preencha com suas chaves do Supabase e Anthropic
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# 5. Rode o projeto
+npm run dev
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Acesse em: `http://localhost:3000`
+
+---
+
+## 🔐 Variáveis de Ambiente
+
+Crie um arquivo `.env.local` na raiz com as seguintes variáveis:
+
+```env
+SUPABASE_URL=sua_url_do_supabase
+SUPABASE_ANON_KEY=sua_chave_anonima
+ANTHROPIC_API_KEY=sua_chave_da_anthropic
+```
+
+> ⚠️ Nunca compartilhe suas chaves. O arquivo `.env.local` já está no `.gitignore`.
+
+---
+
+## 👨‍💻 Autor
+
+**Luiz Henrique Silva Ramos Cerqueira**  
+Estudante de Engenharia de Software — UNIFAN  
+[LinkedIn](https://www.linkedin.com/in/luiz-henrique-0b9474281) • [GitHub](https://github.com/Luizsilvach)
