@@ -371,10 +371,12 @@ export default function Chat() {
 
                       <div
                         style={{
-                          borderRadius: 18, overflow: 'hidden', fontSize: 14, lineHeight: '1.5', userSelect: 'none',
+                          borderTopLeftRadius: 18, borderTopRightRadius: 18,
+                          borderBottomRightRadius: minha ? 4 : 18, borderBottomLeftRadius: minha ? 18 : 4,
+                          overflow: 'hidden', fontSize: 14, lineHeight: '1.5', userSelect: 'none',
                           ...(minha
-                            ? { background: selecionada ? '#EF4444' : '#4F46E5', color: '#fff', borderBottomRightRadius: 4, cursor: isAdmin ? 'pointer' : 'default' }
-                            : { background: selecionada ? 'rgba(239,68,68,0.2)' : D.card, color: D.text, borderBottomLeftRadius: 4, border: `1px solid ${D.border}`, cursor: isAdmin ? 'pointer' : 'default' }
+                            ? { background: selecionada ? '#EF4444' : '#4F46E5', color: '#fff', cursor: isAdmin ? 'pointer' : 'default' }
+                            : { background: selecionada ? 'rgba(239,68,68,0.2)' : D.card, color: D.text, border: `1px solid ${D.border}`, cursor: isAdmin ? 'pointer' : 'default' }
                           ),
                         }}
                         onMouseDown={() => iniciarLongPress(m.id)}
