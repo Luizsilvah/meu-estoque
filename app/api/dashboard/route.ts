@@ -17,7 +17,7 @@ export async function GET() {
   // Busca estoque e validades próximas em paralelo para economizar tempo
   const [{ data: estoque, error: erroEstoque }, { data: validades, error: erroVal }] =
     await Promise.all([
-      admin.from('estoque').select('qtd_atual, qtd_base, qtd_max, produtos(nome, preco_custo)'),
+      admin.from('estoque').select('produto_id, qtd_atual, qtd_base, qtd_max, produtos(nome, preco_custo)'),
       admin
         .from('validades')
         .select('data_validade, produto_id, produtos(nome)')
@@ -40,12 +40,21 @@ export async function GET() {
     }))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 
+  // Só alertamos sobre lotes de produtos que ainda têm estoque físico (qtd_atual > 0).
+  // Lotes de produtos zerados ou já removidos ("órfãos") não geram alerta de validade.
+  const idsComEstoqueAtivo = new Set(
+    (estoque ?? []).filter((item) => item.qtd_atual > 0).map((item) => item.produto_id),
+  )
+  const validadesAtivas = erroVal
+    ? []
+    : (validades ?? []).filter((v) => idsComEstoqueAtivo.has(v.produto_id))
+
   // Contagem de lotes vencidos ou a vencer nos próximos 7 dias
-  const vencendo7d = erroVal ? 0 : (validades ?? []).length
+  const vencendo7d = validadesAtivas.length
 
   const agora = new Date()
   agora.setHours(0, 0, 0, 0)
-  const listaVencendo = erroVal ? [] : (validades ?? [])
+  const listaVencendo = validadesAtivas
     .map((v) => {
       const valDate = new Date(v.data_validade + 'T00:00:00')
       const dias = Math.floor((valDate.getTime() - agora.getTime()) / 86400000)
