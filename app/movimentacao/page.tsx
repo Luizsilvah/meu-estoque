@@ -675,7 +675,15 @@ function Movimentacao() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <button onClick={() => setLotesSelecionados((prev) => {
                           const next = { ...prev }
-                          if (next[v.id]) { delete next[v.id] } else { next[v.id] = Math.min(1, v.quantidade) }
+                          if (next[v.id]) {
+                            delete next[v.id]
+                          } else {
+                            // Ao marcar o lote, preenche com o que ainda falta para o alvo,
+                            // limitado pela quantidade registrada nesta validade.
+                            const alocadoOutros = Object.values(next).reduce((s, q) => s + q, 0)
+                            const faltam = Math.max(1, modalLote.alvo - alocadoOutros)
+                            next[v.id] = Math.min(v.quantidade, faltam)
+                          }
                           return next
                         })} style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${checked ? '#6366F1' : D.border}`, background: checked ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0 }}>
                           {checked && <span style={{ color: '#fff', fontSize: 12, fontWeight: 900, lineHeight: 1 }}>✓</span>}
@@ -691,13 +699,25 @@ function Movimentacao() {
                           <span style={{ fontSize: 11, color: D.text2 }}>{v.quantidade} disponível</span>
                         </div>
                         {checked && (
-                          <input type="number" min="1" max={v.quantidade} value={qtdSel}
-                            onChange={(e) => {
-                              const val = Math.min(v.quantidade, Math.max(1, Number(e.target.value) || 1))
-                              setLotesSelecionados((prev) => ({ ...prev, [v.id]: val }))
-                            }}
-                            style={{ width: 64, background: D.card, border: `1px solid ${D.border}`, borderRadius: 8, padding: '6px 8px', fontSize: 14, fontWeight: 700, textAlign: 'center', color: D.text, outline: 'none' }}
-                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            <button type="button" aria-label="Diminuir"
+                              onClick={() => setLotesSelecionados((prev) => {
+                                const next = { ...prev }
+                                const novo = (next[v.id] ?? 0) - 1
+                                if (novo <= 0) delete next[v.id]
+                                else next[v.id] = novo
+                                return next
+                              })}
+                              style={{ width: 30, height: 30, borderRadius: 8, border: '2px solid #6366F1', background: D.input, color: '#6366F1', fontSize: 18, fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 }}>
+                              −
+                            </button>
+                            <span style={{ minWidth: 22, textAlign: 'center', fontSize: 15, fontWeight: 800, color: D.text }}>{qtdSel}</span>
+                            <button type="button" aria-label="Aumentar" disabled={qtdSel >= v.quantidade}
+                              onClick={() => setLotesSelecionados((prev) => ({ ...prev, [v.id]: Math.min(v.quantidade, (prev[v.id] ?? 0) + 1) }))}
+                              style={{ width: 30, height: 30, borderRadius: 8, border: '2px solid #6366F1', background: '#6366F1', color: '#fff', fontSize: 18, fontWeight: 800, cursor: qtdSel >= v.quantidade ? 'not-allowed' : 'pointer', opacity: qtdSel >= v.quantidade ? 0.4 : 1, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 }}>
+                              +
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -712,7 +732,15 @@ function Movimentacao() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <button onClick={() => setLotesSelecionados((prev) => {
                           const next = { ...prev }
-                          if (next['__sem__']) { delete next['__sem__'] } else { next['__sem__'] = Math.min(1, modalLote.semValidadeDisp) }
+                          if (next['__sem__']) {
+                            delete next['__sem__']
+                          } else {
+                            // Sem validade: preenche com o que falta para o alvo,
+                            // limitado pelo disponível fora dos lotes (qtd_atual − soma dos lotes).
+                            const alocadoOutros = Object.values(next).reduce((s, q) => s + q, 0)
+                            const faltam = Math.max(1, modalLote.alvo - alocadoOutros)
+                            next['__sem__'] = Math.min(modalLote.semValidadeDisp, faltam)
+                          }
                           return next
                         })} style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${checked ? '#6366F1' : D.border}`, background: checked ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0 }}>
                           {checked && <span style={{ color: '#fff', fontSize: 12, fontWeight: 900, lineHeight: 1 }}>✓</span>}
@@ -722,13 +750,25 @@ function Movimentacao() {
                           <span style={{ fontSize: 11, color: D.text2, display: 'block' }}>{modalLote.semValidadeDisp} disponível</span>
                         </div>
                         {checked && (
-                          <input type="number" min="1" max={modalLote.semValidadeDisp} value={qtdSel}
-                            onChange={(e) => {
-                              const val = Math.min(modalLote.semValidadeDisp, Math.max(1, Number(e.target.value) || 1))
-                              setLotesSelecionados((prev) => ({ ...prev, ['__sem__']: val }))
-                            }}
-                            style={{ width: 64, background: D.card, border: `1px solid ${D.border}`, borderRadius: 8, padding: '6px 8px', fontSize: 14, fontWeight: 700, textAlign: 'center', color: D.text, outline: 'none' }}
-                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            <button type="button" aria-label="Diminuir"
+                              onClick={() => setLotesSelecionados((prev) => {
+                                const next = { ...prev }
+                                const novo = (next['__sem__'] ?? 0) - 1
+                                if (novo <= 0) delete next['__sem__']
+                                else next['__sem__'] = novo
+                                return next
+                              })}
+                              style={{ width: 30, height: 30, borderRadius: 8, border: '2px solid #6366F1', background: D.input, color: '#6366F1', fontSize: 18, fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 }}>
+                              −
+                            </button>
+                            <span style={{ minWidth: 22, textAlign: 'center', fontSize: 15, fontWeight: 800, color: D.text }}>{qtdSel}</span>
+                            <button type="button" aria-label="Aumentar" disabled={qtdSel >= modalLote.semValidadeDisp}
+                              onClick={() => setLotesSelecionados((prev) => ({ ...prev, ['__sem__']: Math.min(modalLote.semValidadeDisp, (prev['__sem__'] ?? 0) + 1) }))}
+                              style={{ width: 30, height: 30, borderRadius: 8, border: '2px solid #6366F1', background: '#6366F1', color: '#fff', fontSize: 18, fontWeight: 800, cursor: qtdSel >= modalLote.semValidadeDisp ? 'not-allowed' : 'pointer', opacity: qtdSel >= modalLote.semValidadeDisp ? 0.4 : 1, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 }}>
+                              +
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -813,8 +853,9 @@ function Movimentacao() {
                 style={{ width: 48, height: 56, borderRadius: 14, border: `2px solid ${modal.tipo === 'entrada' ? '#10B981' : '#EF4444'}`, background: D.input, color: modal.tipo === 'entrada' ? '#10B981' : '#EF4444', fontSize: 26, fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
                 −
               </button>
-              <input type="number" min="1" value={quantidade}
+              <input type="number" inputMode="numeric" min="1" value={quantidade}
                 onChange={(e) => setQuantidade(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 onKeyDown={(e) => { if (e.key === 'Enter') salvar() }}
                 autoFocus
                 style={{ flex: 1, border: `2px solid ${modal.tipo === 'entrada' ? '#10B981' : '#EF4444'}`, borderRadius: 16, padding: '12px', fontSize: 28, fontWeight: 800, textAlign: 'center', color: D.text, background: D.input, outline: 'none', boxSizing: 'border-box' }}
