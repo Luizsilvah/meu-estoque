@@ -50,8 +50,11 @@ export async function proxy(request: NextRequest) {
     return redirectResponse
   }
 
-  // Rotas de API sem sessão → 401 JSON (não redireciona para evitar quebrar fetch())
-  if (!user && pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/')) {
+  // Rotas de API sem sessão → 401 JSON. NUNCA redireciona: o browser seguiria o
+  // 307 e o fetch(...).json() receberia HTML. Cobre TAMBÉM /api/auth/* (me, logout) —
+  // login/reset-senha são client-side (supabase-browser), não há endpoint em
+  // /api/auth/ que precise rodar sem sessão.
+  if (!user && pathname.startsWith('/api/')) {
     return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   }
 
