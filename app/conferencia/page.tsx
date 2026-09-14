@@ -46,6 +46,7 @@ export default function Conferencia() {
   const [mostrarZerar, setMostrarZerar] = useState(false)
   const [senhaZerar, setSenhaZerar] = useState('')
   const [zerandoEstoque, setZerandoEstoque] = useState(false)
+  const [erroZerar, setErroZerar] = useState('')
 
   const [conferidos, setConferidos] = useState<Set<string>>(new Set())
 
@@ -98,17 +99,28 @@ export default function Conferencia() {
   }, [dados, busca])
 
   async function zerarEstoque() {
-    if (senhaZerar !== '2010') return
+    if (!senhaZerar || zerandoEstoque) return
     setZerandoEstoque(true)
+    setErroZerar('')
     try {
-      const res = await fetch('/api/estoque/zerar', { method: 'DELETE' })
-      const json = await res.json()
-      if (!res.ok || json.erro) return
+      const res = await fetch('/api/estoque/zerar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ senha: senhaZerar }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || json?.erro) {
+        setErroZerar(json?.erro ?? 'Erro ao zerar o estoque')
+        return
+      }
       setDados((prev) => prev.map((item) => ({ ...item, qtd_atual: 0, qtd_cozinha: 0 })))
+      setValidadesPorProduto({})
       setConferidos(new Set())
       setMostrarZerar(false)
       setSenhaZerar('')
-    } catch { /* ignorar */ }
+    } catch {
+      setErroZerar('Erro de conexão')
+    }
     finally { setZerandoEstoque(false) }
   }
 
@@ -394,25 +406,28 @@ export default function Conferencia() {
       {isAdmin && (
         <div style={{ padding: '8px 16px 40px', borderTop: `1px solid ${D.border}`, marginTop: 8 }}>
           {!mostrarZerar ? (
-            <button onClick={() => { setMostrarZerar(true); setSenhaZerar('') }}
+            <button onClick={() => { setMostrarZerar(true); setSenhaZerar(''); setErroZerar('') }}
               style={{ width: '100%', padding: '13px', borderRadius: 16, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#EF4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               Zerar todo o estoque
             </button>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, textAlign: 'center', margin: 0 }}>
-                ⚠️ Esta ação vai zerar todos os produtos
+                ⚠️ Esta ação vai zerar todos os produtos e apagar todas as validades
               </p>
-              <input type="password" placeholder="Digite a senha para confirmar"
-                value={senhaZerar} onChange={(e) => setSenhaZerar(e.target.value)} autoFocus
+              <input type="password" placeholder="Sua senha de login" autoComplete="current-password"
+                value={senhaZerar} onChange={(e) => { setSenhaZerar(e.target.value); setErroZerar('') }} autoFocus
                 style={{ ...inputStyle, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }} />
+              {erroZerar && (
+                <p style={{ color: '#EF4444', fontSize: 12, textAlign: 'center', margin: 0 }}>{erroZerar}</p>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => { setMostrarZerar(false); setSenhaZerar('') }}
+                <button onClick={() => { setMostrarZerar(false); setSenhaZerar(''); setErroZerar('') }}
                   style={{ flex: 1, padding: '12px', borderRadius: 14, border: `1px solid ${D.border}`, background: 'none', color: D.text2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                   Cancelar
                 </button>
-                <button onClick={zerarEstoque} disabled={zerandoEstoque || senhaZerar !== '2010'}
-                  style={{ flex: 1, padding: '12px', borderRadius: 14, background: '#EF4444', color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (zerandoEstoque || senhaZerar !== '2010') ? 0.4 : 1 }}>
+                <button onClick={zerarEstoque} disabled={zerandoEstoque || !senhaZerar}
+                  style={{ flex: 1, padding: '12px', borderRadius: 14, background: '#EF4444', color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (zerandoEstoque || !senhaZerar) ? 0.4 : 1 }}>
                   {zerandoEstoque ? 'Zerando...' : 'Confirmar'}
                 </button>
               </div>
