@@ -77,7 +77,9 @@ create index if not exists idx_push_subscriptions_user_id on public.push_subscri
 -- quinta=4): se hoje já é quinta, a compra de hoje já foi feita, então conta
 -- 7 dias (a quinta seguinte). Nos outros dias, conta a distância direta até
 -- a próxima quinta.
-create or replace view public.vw_previsao_compras as
+create or replace view public.vw_previsao_compras
+with (security_invoker = on)
+as
 with parametros as (
   select
     (now() at time zone 'America/Bahia')::date as hoje,
@@ -117,7 +119,7 @@ select
   )::int as qtd_sugerida,
   case
     when e.qtd_atual <= e.qtd_base then 'CRITICO'
-    when (e.qtd_atual - (coalesce(s.total_saidas_30d, 0) / 30.0) * pm.dias_ate_quinta) <= e.qtd_base then 'COMPRAR_QUINTA'
+    when (e.qtd_atual - (coalesce(s.total_saidas_30d, 0) / 30.0) * (pm.dias_ate_quinta + 7)) <= e.qtd_base then 'COMPRAR_QUINTA'
     else 'OK'
   end as status
 from public.estoque e
@@ -130,6 +132,7 @@ cross join parametros pm;
 -- resto do app — ver supabase/migrations/20260825130000_enable_rls_all_tables.sql),
 -- mas o grant explícito segue o mesmo padrão já usado nas funções deste projeto.
 grant select on public.vw_previsao_compras to service_role;
+revoke all on public.vw_previsao_compras from anon, authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- 4. nota_lancar_item — elimina o N+1 de /api/nota/lancar (diagnóstico item 4)
@@ -181,6 +184,7 @@ create or replace function public.nota_lancar_item(
 returns table (produto_id uuid)
 language plpgsql
 as $$
+#variable_conflict use_column
 declare
   v_produto_id uuid := p_produto_id;
   v_lote record;
@@ -235,3 +239,4 @@ alter function public.nota_lancar_item(uuid, text, uuid, text, text, numeric, in
   set search_path = public;
 
 grant execute on function public.nota_lancar_item(uuid, text, uuid, text, text, numeric, integer, integer, integer, uuid, text, jsonb) to service_role;
+revoke execute on function public.nota_lancar_item(uuid, text, uuid, text, text, numeric, integer, integer, integer, uuid, text, jsonb) from public, anon, authenticated;

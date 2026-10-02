@@ -27,6 +27,7 @@ import { Validade, diasAteVencer, proximaValidade } from '@/app/lib/validades'
 type MotivoPendente = {
   item: Item
   novaQtdTotal: number
+  novaQtdCozinha: number
   diff: number
 }
 
@@ -179,45 +180,76 @@ export default function Conferencia() {
     setFormPrincipal(String(Math.max(0, total - c)))
   }
 
+  // Chama a RPC unificada (ver supabase/migrations/20261003120000_conferencia_ajustar.sql).
+  // p_tipo null = só ajusta as quantidades, sem logar movimentação nem tocar lote
+  // (usado quando o total não mudou — só o split cozinha/principal).
+  async function chamarConferenciaAjustar(params: {
+    produtoId: string
+    novaQtdAtual: number
+    novaQtdCozinha: number
+    tipo?: string | null
+    lotesAdd?: { data_validade: string; quantidade: number }[]
+    lotesRemover?: { validade_id: string; quantidade: number }[]
+  }) {
+    const res = await fetch('/api/estoque/conferencia', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        produto_id: params.produtoId,
+        nova_qtd_atual: params.novaQtdAtual,
+        nova_qtd_cozinha: params.novaQtdCozinha,
+        tipo: params.tipo ?? null,
+        lotes_add: params.lotesAdd ?? [],
+        lotes_remover: params.lotesRemover ?? [],
+      }),
+    })
+    const json = await res.json()
+    if (!res.ok || json.erro) throw new Error(json.erro ?? 'Erro ao salvar')
+    return json as { qtd_atual: number; qtd_cozinha: number }
+  }
+
   async function salvar() {
     if (!editando) return
     const cozinha = Math.max(0, Number(formCozinha) || 0)
     const principal = Math.max(0, Number(formPrincipal) || 0)
     const total = cozinha + principal
+    const diff = total - editando.qtd_atual
+
+    // Mudou a quantidade total: não salva ainda — primeiro precisa saber o
+    // motivo (e, se houver, o lote afetado), que agora vai tudo junto na
+    // mesma chamada de conferencia_ajustar. Ver registrarMotivo/finalizarMotivo.
+    if (diff !== 0) {
+      setMotivoPendente({ item: editando, novaQtdTotal: total, novaQtdCozinha: cozinha, diff })
+      fecharEditar()
+      return
+    }
+
+    // Total igual — só pode ter mudado o split cozinha/principal (ou nada).
+    // Sem motivo, sem lote: 1 chamada direta.
     setSalvando(true); setFeedback(null)
     try {
-      const res = await fetch('/api/estoque/conferencia', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estoque_id: editando.id, qtd_atual: total, qtd_cozinha: cozinha }),
-      })
-      const json = await res.json()
-      if (!res.ok || json.erro) { setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+      const resultado = await chamarConferenciaAjustar({ produtoId: editando.produto_id, novaQtdAtual: total, novaQtdCozinha: cozinha, tipo: null })
       invalidarEstoqueCache()
-      const diff = total - editando.qtd_atual
       setDados((prev) => prev.map((item) =>
-        item.id === editando.id ? { ...item, qtd_atual: json.qtd_atual, qtd_cozinha: json.qtd_cozinha } : item
+        item.id === editando.id ? { ...item, qtd_atual: resultado.qtd_atual, qtd_cozinha: resultado.qtd_cozinha } : item
       ))
       setConferidos((prev) => new Set([...prev, editando.id]))
-      if (diff !== 0) {
-        setMotivoPendente({ item: editando, novaQtdTotal: total, diff })
-        fecharEditar()
-      } else {
-        setFeedback({ msg: 'Salvo!', ok: true })
-        setTimeout(fecharEditar, 800)
-      }
-    } catch {
-      setFeedback({ msg: 'Erro de conexão', ok: false })
+      setFeedback({ msg: 'Salvo!', ok: true })
+      setTimeout(fecharEditar, 800)
+    } catch (e) {
+      setFeedback({ msg: e instanceof Error ? e.message : 'Erro de conexão', ok: false })
     } finally { setSalvando(false) }
   }
 
   async function registrarMotivo(tipo: string) {
     if (!motivoPendente) return
+    setFeedback(null)
     const prodId = motivoPendente.item.produtos?.id ?? ''
     const vals = validadesPorProduto[prodId] ?? []
-    // Correção: mostra lotes disponíveis se existirem, senão fecha direto
+    // Correção ao aumentar: sempre pede a validade (nova ou lote existente),
+    // igual entrada. Ao diminuir: só pede lote se houver algum cadastrado.
     if (tipo === 'correcao') {
-      if (vals.length > 0) { setTipoMotivoEscolhido(tipo); return }
-      setMotivoPendente(null); return
+      if (motivoPendente.diff > 0 || vals.length > 0) { setTipoMotivoEscolhido(tipo); return }
+      await finalizarMotivo(null, tipo); return
     }
     // Para saídas, pede validade antes se existirem lotes cadastrados
     if ((tipo === 'saida_uso' || tipo === 'descarte_vencido') && motivoPendente.diff < 0) {
@@ -230,51 +262,61 @@ export default function Conferencia() {
     await finalizarMotivo(null, tipo)
   }
 
-  async function finalizarMotivo(validadeId: string | null, tipoOverride?: string, novaDataVal?: string) {
+  // loteEscolhido: lote existente selecionado no modal (pode ser de "somar",
+  // numa entrada/correção que aumentou, ou de "remover", numa saída/correção
+  // que diminuiu — chamarConferenciaAjustar decide pelo sinal do diff).
+  async function finalizarMotivo(loteEscolhido: Validade | null, tipoOverride?: string, novaDataVal?: string) {
     if (!motivoPendente) return
     const tipo = tipoOverride ?? tipoMotivoEscolhido
     if (!tipo) return
-    const { item, diff } = motivoPendente
+    const { item, novaQtdTotal, novaQtdCozinha, diff } = motivoPendente
     setRegistrandoMotivo(true)
+    setFeedback(null)
     try {
-      // Correção não registra movimentação — apenas anota qual lote foi ajustado
-      if (tipo === 'correcao') return
-      const payload: Record<string, unknown> = {
-        produto_id: item.produto_id,
-        tipo: diff < 0 ? 'saida' : 'entrada',
-        quantidade: Math.abs(diff),
-        motivo: tipo,
-        local: 'principal',
-        skip_stock_update: true,
+      const lotesAdd: { data_validade: string; quantidade: number }[] = []
+      const lotesRemover: { validade_id: string; quantidade: number }[] = []
+
+      if (diff > 0) {
+        const data = loteEscolhido?.data_validade ?? novaDataVal
+        if (data) lotesAdd.push({ data_validade: data, quantidade: diff })
+      } else if (diff < 0 && loteEscolhido) {
+        lotesRemover.push({ validade_id: loteEscolhido.id, quantidade: Math.abs(diff) })
       }
-      if (validadeId) payload.validade_id = validadeId
-      await fetch('/api/movimentacao', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+
+      const resultado = await chamarConferenciaAjustar({
+        produtoId: item.produto_id, novaQtdAtual: novaQtdTotal, novaQtdCozinha, tipo, lotesAdd, lotesRemover,
       })
-      // Cria o lote de validade se o usuário informou uma data nova na entrada
-      if (novaDataVal && diff > 0) {
-        const novoLote = await fetch('/api/validades', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ produto_id: item.produto_id, data_validade: novaDataVal, quantidade: Math.abs(diff) }),
-        })
-        if (novoLote.ok) {
-          const val = await novoLote.json()
-          if (val && !val.erro) {
-            setValidadesPorProduto((prev) => {
-              const key = item.produto_id
-              const lista = [...(prev[key] ?? []), val].sort((a, b) => a.data_validade.localeCompare(b.data_validade))
-              return { ...prev, [key]: lista }
-            })
+      invalidarEstoqueCache()
+      setDados((prev) => prev.map((i) =>
+        i.id === item.id ? { ...i, qtd_atual: resultado.qtd_atual, qtd_cozinha: resultado.qtd_cozinha } : i
+      ))
+      setConferidos((prev) => new Set([...prev, item.id]))
+
+      // Rebusca as validades reais deste produto em vez de tentar mesclar
+      // localmente — um lote novo criado pela RPC não tem id no cliente até
+      // buscar de volta, e inventar um placeholder quebraria uma 2ª ação no
+      // mesmo lote dentro da mesma sessão (ex.: remover dele de novo).
+      if (lotesAdd.length > 0 || lotesRemover.length > 0) {
+        const resVal = await fetch(`/api/validades?produto_id=${item.produto_id}`)
+        if (resVal.ok) {
+          const lista: Validade[] = await resVal.json()
+          if (Array.isArray(lista)) {
+            setValidadesPorProduto((prev) => ({ ...prev, [item.produto_id]: lista }))
           }
         }
       }
-    } finally {
-      setRegistrandoMotivo(false)
+
+      // Sucesso: fecha os modais de motivo/lote. (finally, abaixo, só cuida do
+      // spinner — se desse erro, os setters de fechamento não rodam, e o modal
+      // continua aberto com a mensagem visível para o usuário tentar de novo.)
       setMotivoPendente(null)
       setTipoMotivoEscolhido(null)
       setMostrarInputNovaData(false)
       setNovaDataEntrada('')
+    } catch (e) {
+      setFeedback({ msg: e instanceof Error ? e.message : 'Erro ao salvar', ok: false })
+    } finally {
+      setRegistrandoMotivo(false)
     }
   }
 
@@ -487,8 +529,11 @@ export default function Conferencia() {
 
       {/* Modal selecionar validade (lote) */}
       {motivoPendente && tipoMotivoEscolhido && (() => {
-        const isEntrada = tipoMotivoEscolhido === 'entrada'
         const isCorrecao = tipoMotivoEscolhido === 'correcao'
+        // Correção que aumentou se comporta como entrada (pode somar num lote
+        // existente ou abrir data nova) — só correção que diminuiu e as saídas
+        // (saida_uso/descarte_vencido) só escolhem entre os lotes existentes.
+        const isEntrada = tipoMotivoEscolhido === 'entrada' || (isCorrecao && motivoPendente.diff > 0)
         const prodId = motivoPendente.item.produtos?.id ?? ''
         const vals = [...(validadesPorProduto[prodId] ?? [])].sort((a, b) => a.data_validade.localeCompare(b.data_validade))
         return (
@@ -496,7 +541,7 @@ export default function Conferencia() {
             <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
               <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
               <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>
-                {isCorrecao ? 'Qual lote foi corrigido?' : isEntrada ? 'Em qual validade entra?' : 'De qual validade?'}
+                {isCorrecao && isEntrada ? 'Em qual validade entra a correção?' : isCorrecao ? 'Qual lote foi corrigido?' : isEntrada ? 'Em qual validade entra?' : 'De qual validade?'}
               </p>
               <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 20 }}>{motivoPendente.item.produtos?.nome}</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -505,7 +550,7 @@ export default function Conferencia() {
                   const dataFmt = new Date(v.data_validade + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
                   const cor = dias < 0 ? '#EF4444' : dias <= 7 ? '#F97316' : D.text
                   return (
-                    <button key={v.id} onClick={() => finalizarMotivo(v.id)} disabled={registrandoMotivo}
+                    <button key={v.id} onClick={() => finalizarMotivo(v)} disabled={registrandoMotivo}
                       style={{ padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: cor }}>{dataFmt}{dias < 0 ? ' · Vencido' : ''}</span>
                       <span style={{ color: D.text2, fontSize: 13 }}>{v.quantidade} {motivoPendente.item.produtos?.unidade}</span>
@@ -535,6 +580,11 @@ export default function Conferencia() {
                   {isCorrecao ? 'Sem validade específica' : 'Não especificar'}
                 </button>
               </div>
+              {feedback && (
+                <p style={{ fontSize: 13, textAlign: 'center', fontWeight: 600, marginTop: 12, color: feedback.ok ? '#10B981' : '#EF4444' }}>
+                  {feedback.msg}
+                </p>
+              )}
               {registrandoMotivo && <p style={{ color: D.text2, fontSize: 12, textAlign: 'center', marginTop: 12 }}>Registrando...</p>}
             </div>
           </div>
@@ -584,6 +634,11 @@ export default function Conferencia() {
                 </>
               )}
             </div>
+            {feedback && (
+              <p style={{ fontSize: 13, textAlign: 'center', fontWeight: 600, marginTop: 12, color: feedback.ok ? '#10B981' : '#EF4444' }}>
+                {feedback.msg}
+              </p>
+            )}
             {registrandoMotivo && (
               <p style={{ color: D.text2, fontSize: 12, textAlign: 'center', marginTop: 12 }}>Registrando...</p>
             )}
