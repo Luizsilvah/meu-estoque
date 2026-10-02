@@ -143,13 +143,9 @@ export default function Home() {
   useEffect(() => {
     if ('Notification' in window && 'PushManager' in window) {
       setPushSuportado(true)
-      if (Notification.permission === 'granted') {
-        setPushAtivo(true)
-        // Re-registra a subscription existente em segundo plano — não pede permissão
-        // de novo (já concedida) e é o jeito das subscriptions antigas (de antes do
-        // alerta de compra de quinta) ganharem o user_id sem o usuário fazer nada.
-        void subscribePush()
-      }
+      // Só reflete o estado — nenhuma chamada automática aqui. Ativar push é
+      // sempre uma ação explícita do usuário, pelo botão (handleAtivarPush).
+      if (Notification.permission === 'granted') setPushAtivo(true)
     }
   }, [])
 

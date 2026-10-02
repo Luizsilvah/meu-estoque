@@ -1,7 +1,12 @@
-// GET /api/cron/alerta-compra — chamado pelo Vercel Cron toda quarta 18h
-// (America/Bahia), ver vercel.json. Avisa os admins quantos produtos
-// precisam entrar na compra de quinta-feira.
+// GET /api/cron/alerta-compra — avisa os admins quantos produtos precisam
+// entrar na compra de quinta-feira.
 //
+// SEM AGENDAMENTO ATIVO: o cron em vercel.json foi removido de propósito —
+// a rota continua aqui, mas não é mais chamada automaticamente. Pra reativar
+// (toda quarta 18h America/Bahia = 21h UTC), volte a adicionar em vercel.json:
+//   { "crons": [{ "path": "/api/cron/alerta-compra", "schedule": "0 21 * * 3" }] }
+//
+
 // Autenticação: não há sessão de usuário aqui (é o Vercel quem chama, não um
 // browser logado) — por isso o /api/cron/ é liberado no proxy.ts e a
 // autorização é feita só pelo header Authorization: Bearer CRON_SECRET,
