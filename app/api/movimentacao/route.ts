@@ -94,7 +94,9 @@ export async function POST(request: Request) {
           process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
           process.env.VAPID_PRIVATE_KEY!
         )
-        const { data: subs } = await supabase.from('push_subscriptions').select('endpoint, keys')
+        // Schema real: subscription (jsonb) tem o objeto inteiro — não há
+        // colunas endpoint/keys no topo (ver app/api/notificacoes/subscribe)
+        const { data: subs } = await supabase.from('push_subscriptions').select('subscription')
         if (!subs?.length) return
         const { data: prod } = await supabase.from('produtos').select('nome').eq('id', produto_id).single()
         const payload = JSON.stringify({
@@ -104,7 +106,7 @@ export async function POST(request: Request) {
           url: '/estoque',
         })
         await Promise.allSettled(
-          subs.map((s) => webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, payload))
+          subs.map((s) => webpush.sendNotification(s.subscription, payload))
         )
       } catch { /* notificação é best-effort */ }
     })()

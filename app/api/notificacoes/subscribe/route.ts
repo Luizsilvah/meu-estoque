@@ -11,14 +11,18 @@ export async function POST(req: Request) {
   }
 
   const admin = createSupabaseAdmin()
+  // Schema real da tabela: subscription é um jsonb com o objeto inteiro
+  // ({ endpoint, keys, ... }), e usuario_id (não "user_id") é a coluna de
+  // dono — não existem colunas endpoint/keys no topo (isso quebrava toda
+  // leitura/escrita aqui, em /api/notificacoes/enviar e no push de estoque
+  // baixo de /api/movimentacao; corrigido junto com o alerta de quarta).
+  // onConflict em usuario_id: 1 subscription por usuário — reautorizar (ou o
+  // auto-refresh de app/page.tsx) substitui a antiga em vez de acumular linha.
   const { error } = await admin
     .from('push_subscriptions')
-    // user_id vai junto para permitir filtrar só admins (ex.: alerta de compra
-    // de quarta-feira). Subscriptions antigas são re-enviadas aqui automaticamente
-    // (ver app/page.tsx) e ganham o user_id sem o usuário precisar reautorizar nada.
     .upsert(
-      { endpoint: subscription.endpoint, keys: subscription.keys, user_id: user.id },
-      { onConflict: 'endpoint' }
+      { usuario_id: user.id, subscription },
+      { onConflict: 'usuario_id' }
     )
 
   if (error) return Response.json({ erro: error.message }, { status: 500 })

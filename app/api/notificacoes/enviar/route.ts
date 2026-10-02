@@ -14,9 +14,11 @@ export async function POST(req: Request) {
   const { titulo, corpo } = await req.json()
 
   const admin = createSupabaseAdmin()
+  // Schema real: não existem colunas endpoint/keys — o objeto inteiro da
+  // subscription fica no jsonb `subscription` (ver app/api/notificacoes/subscribe).
   const { data: subs, error } = await admin
     .from('push_subscriptions')
-    .select('endpoint, keys')
+    .select('id, subscription')
 
   if (error) return Response.json({ erro: error.message }, { status: 500 })
   if (!subs || subs.length === 0) return Response.json({ enviadas: 0 })
@@ -29,30 +31,25 @@ export async function POST(req: Request) {
   })
 
   const resultados = await Promise.allSettled(
-    subs.map((s) =>
-      webpush.sendNotification(
-        { endpoint: s.endpoint, keys: s.keys },
-        payload
-      )
-    )
+    subs.map((s) => webpush.sendNotification(s.subscription, payload))
   )
 
   const enviadas = resultados.filter((r) => r.status === 'fulfilled').length
   const falhas = resultados.length - enviadas
 
-  // Remove subscriptions inválidas (410 Gone)
-  const invalid: string[] = []
+  // Remove subscriptions inválidas (410 Gone) pelo id da linha
+  const invalidos: string[] = []
   resultados.forEach((r, i) => {
     if (r.status === 'rejected') {
       const err = r.reason as { statusCode?: number }
-      if (err?.statusCode === 410) invalid.push(subs[i].endpoint)
+      if (err?.statusCode === 410) invalidos.push(subs[i].id)
     }
   })
-  if (invalid.length > 0) {
+  if (invalidos.length > 0) {
     await admin
       .from('push_subscriptions')
       .delete()
-      .in('endpoint', invalid)
+      .in('id', invalidos)
   }
 
   return Response.json({ enviadas, falhas })
