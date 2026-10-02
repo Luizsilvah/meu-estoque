@@ -13,8 +13,11 @@ export async function POST(req: Request) {
   const admin = createSupabaseAdmin()
   const { error } = await admin
     .from('push_subscriptions')
+    // user_id vai junto para permitir filtrar só admins (ex.: alerta de compra
+    // de quarta-feira). Subscriptions antigas são re-enviadas aqui automaticamente
+    // (ver app/page.tsx) e ganham o user_id sem o usuário precisar reautorizar nada.
     .upsert(
-      { endpoint: subscription.endpoint, keys: subscription.keys },
+      { endpoint: subscription.endpoint, keys: subscription.keys, user_id: user.id },
       { onConflict: 'endpoint' }
     )
 

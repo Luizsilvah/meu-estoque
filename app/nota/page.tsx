@@ -1,6 +1,7 @@
 'use client'
 import { useRef, useState, useEffect, ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 
 type ProdutoEstoque = {
   produto_id: string
@@ -77,10 +78,10 @@ export default function NotaPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/estoque').then((r) => r.json()),
+      buscarEstoque(),
       fetch('/api/cadastro/fornecedor').then((r) => r.json()),
     ]).then(([est, forn]) => {
-      if (Array.isArray(est)) setEstoque(est)
+      setEstoque(est as unknown as ProdutoEstoque[])
       if (Array.isArray(forn)) setFornecedores(forn)
     }).catch(() => {})
   }, [])
@@ -303,6 +304,7 @@ export default function NotaPage() {
         setEtapa('revisao')
         return
       }
+      invalidarEstoqueCache()
       setResultadoLanc({ lancados: (json.lancados ?? []).length, falhas: json.falhas ?? [] })
       setEtapa('concluido')
     } catch {

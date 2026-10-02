@@ -4,6 +4,7 @@ import Link from 'next/link'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
+import { buscarEstoque } from '@/app/lib/estoqueCache'
 
 type ItemEstoque = {
   produto_id: string
@@ -45,13 +46,12 @@ export default function Checklist() {
   const [erro, setErro] = useState('')
 
   useEffect(() => {
-    fetch('/api/estoque')
-      .then((r) => r.json())
-      .then((json: ItemEstoque[]) => {
-        if (!Array.isArray(json)) { setErro('Erro ao carregar estoque'); return }
+    buscarEstoque()
+      .then((json) => {
+        const lista = json as unknown as ItemEstoque[]
         // Soma quantidades de todas as localizações por produto
         const porProduto: Record<string, { item: ItemEstoque; qtd_total: number }> = {}
-        for (const item of json as ItemEstoque[]) {
+        for (const item of lista) {
           const pid = item.produto_id
           if (!porProduto[pid]) porProduto[pid] = { item, qtd_total: 0 }
           porProduto[pid].qtd_total += item.qtd_atual

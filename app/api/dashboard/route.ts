@@ -14,15 +14,22 @@ export async function GET() {
   const em7dias = new Date(hoje)
   em7dias.setDate(hoje.getDate() + 7)
 
-  // Busca estoque e validades próximas em paralelo para economizar tempo
-  const [{ data: estoque, error: erroEstoque }, { data: validades, error: erroVal }] =
+  // Busca estoque, validades próximas e a previsão de compra (view no banco) em
+  // paralelo para economizar tempo
+  const [{ data: estoque, error: erroEstoque }, { data: validades, error: erroVal }, { data: previsaoCompras }] =
     await Promise.all([
       admin.from('estoque').select('produto_id, qtd_atual, qtd_base, qtd_max, produtos(nome, preco_custo)'),
       admin
         .from('validades')
         .select('data_validade, produto_id, produtos(nome)')
         .lte('data_validade', em7dias.toISOString().slice(0, 10)),
+      admin.from('vw_previsao_compras').select('status'),
     ])
+
+  // Contagem para o card "Compra de quinta" — críticos (já no mínimo) e os que
+  // vão ficar abaixo do mínimo antes da próxima quinta (ver vw_previsao_compras)
+  const criticos = (previsaoCompras ?? []).filter((i) => i.status === 'CRITICO').length
+  const comprarQuinta = (previsaoCompras ?? []).filter((i) => i.status === 'COMPRAR_QUINTA').length
 
   if (erroEstoque) return Response.json({ erro: erroEstoque.message }, { status: 500 })
 
@@ -72,5 +79,5 @@ export async function GET() {
     return preco != null ? soma + item.qtd_atual * preco : soma
   }, 0)
 
-  return Response.json({ total, precisamPedir: precisamPedir.length, estoqueOk, vencendo7d, listaPedir, listaVencendo, valorEstoque })
+  return Response.json({ total, precisamPedir: precisamPedir.length, estoqueOk, vencendo7d, listaPedir, listaVencendo, valorEstoque, criticos, comprarQuinta })
 }

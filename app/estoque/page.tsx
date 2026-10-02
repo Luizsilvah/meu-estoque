@@ -1,11 +1,15 @@
 'use client'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import BarcodeCameraButton from '../components/BarcodeCameraButton'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
+import type { ItemPrevisaoCompra } from '@/app/api/previsao-compras/route'
+import { comprimirImagem } from '@/app/lib/comprimirImagem'
+import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 
 type ItemEstoque = {
   id: string
@@ -98,16 +102,27 @@ function EstoqueContent() {
   const [novoFornecedorNome, setNovoFornecedorNome] = useState('')
   const [salvandoFornecedor, setSalvandoFornecedor] = useState(false)
 
+  // Status "comprar na quinta" por produto (ver vw_previsao_compras) — alimenta
+  // o badge amarelo abaixo, complementando o "Pedir N" (crítico) que já existia
+  const [statusCompra, setStatusCompra] = useState<Record<string, ItemPrevisaoCompra['status']>>({})
+
   // Carrega estoque, fornecedores e validades ao montar a página
   useEffect(() => {
     async function buscar() {
       try {
-        const [resEstoque, resForn] = await Promise.all([fetch('/api/estoque'), fetch('/api/cadastro/fornecedor')])
-        const jsonEstoque = await resEstoque.json()
+        const [jsonEstoque, resForn, resPrevisao] = await Promise.all([
+          buscarEstoque(), fetch('/api/cadastro/fornecedor'), fetch('/api/previsao-compras'),
+        ])
         const jsonForn = await resForn.json()
-        if (jsonEstoque.erro) { setErro(jsonEstoque.erro); return }
-        setDados(jsonEstoque)
+        setDados(jsonEstoque as unknown as ItemEstoque[])
         if (Array.isArray(jsonForn)) setFornecedores(jsonForn)
+
+        const jsonPrevisao = await resPrevisao.json()
+        if (Array.isArray(jsonPrevisao)) {
+          const mapa: Record<string, ItemPrevisaoCompra['status']> = {}
+          for (const p of jsonPrevisao as ItemPrevisaoCompra[]) mapa[p.produto_id] = p.status
+          setStatusCompra(mapa)
+        }
 
         const produtoIds: string[] = (jsonEstoque as ItemEstoque[]).map((i) => i.produtos?.id).filter(Boolean) as string[]
         const resValAll = await fetch('/api/validades/todos')
@@ -201,6 +216,7 @@ function EstoqueContent() {
       const res = await fetch(`/api/produto?produto_id=${editando.produtos?.id}&estoque_id=${editando.id}`, { method: 'DELETE' })
       const json = await res.json()
       if (!res.ok) { setFeedback({ msg: json.erro ?? 'Erro ao apagar', ok: false }); return }
+      invalidarEstoqueCache()
       setDados((prev) => prev.filter((i) => i.id !== editando.id))
       fecharModal()
     } catch {
@@ -215,8 +231,9 @@ function EstoqueContent() {
     setUploadandoFoto(true)
     setFeedback(null)
     try {
+      const comprimido = await comprimirImagem(file)
       const fd = new FormData()
-      fd.append('foto', file)
+      fd.append('foto', comprimido)
       fd.append('produto_id', editando.produtos.id)
       const res = await fetch('/api/produto/foto', { method: 'POST', body: fd })
       const json = await res.json()
@@ -253,6 +270,7 @@ function EstoqueContent() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+      invalidarEstoqueCache()
       const fornNome = fornecedores.find((f) => f.id === form.fornecedor_id)?.nome ?? null
       const novaQtdAtual = Number(form.qtd_atual)
       const novaQtdBase = Number(form.qtd_base)
@@ -404,6 +422,7 @@ function EstoqueContent() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedbackTransferir({ msg: json.erro ?? 'Erro', ok: false }); return }
+      invalidarEstoqueCache()
       setDados((prev) => prev.map((item) =>
         item.id === modalTransferir.id ? { ...item, qtd_cozinha: json.qtd_cozinha } : item
       ))
@@ -425,6 +444,7 @@ function EstoqueContent() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedbackTransferirModal({ msg: json.erro ?? 'Erro', ok: false }); return }
+      invalidarEstoqueCache()
       setDados((prev) => prev.map((item) =>
         item.id === editando.id ? { ...item, qtd_cozinha: json.qtd_cozinha } : item
       ))
@@ -484,9 +504,11 @@ function EstoqueContent() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedbackNovo({ msg: json.erro ?? 'Erro ao cadastrar', ok: false }); return }
-      const resEstoque = await fetch('/api/estoque')
-      const jsonEstoque = await resEstoque.json()
-      if (!jsonEstoque.erro) setDados(jsonEstoque)
+      invalidarEstoqueCache()
+      // forcar=true: o produto acabou de ser criado, precisa da linha nova agora,
+      // não do cache de até 30s (que ainda nem sabe que ela existe)
+      const jsonEstoque = await buscarEstoque(true)
+      setDados(jsonEstoque as unknown as ItemEstoque[])
       setFeedbackNovo({ msg: 'Produto cadastrado!', ok: true })
       setTimeout(() => { setModalNovoProduto(false); setFeedbackNovo(null) }, 800)
     } catch {
@@ -576,6 +598,10 @@ function EstoqueContent() {
           const vals = validadesPorProduto[prodId] ?? []
           const badge = badgeValidade(vals)
           const qtdPrincipal = item.qtd_atual - (item.qtd_cozinha ?? 0)
+          // Crítico já é coberto pelo badge "Pedir N" acima (mesma condição qtd_atual
+          // <= qtd_base). O amarelo avisa quem ainda não está no mínimo, mas vai ficar
+          // abaixo dele antes da próxima quinta — ver vw_previsao_compras.
+          const comprarNaQuinta = !precisaPedir && statusCompra[prodId] === 'COMPRAR_QUINTA'
 
           return (
             <div key={item.id} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, overflow: 'hidden' }}>
@@ -595,6 +621,11 @@ function EstoqueContent() {
                     {precisaPedir && (
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
                         Pedir {qtdPedir}
+                      </span>
+                    )}
+                    {comprarNaQuinta && (
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>
+                        🟡 Comprar na quinta
                       </span>
                     )}
                     {badge && (
@@ -692,11 +723,13 @@ function EstoqueContent() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   {editando.produtos?.foto_url ? (
                     <div style={{ position: 'relative', flexShrink: 0 }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                      <Image
                         src={editando.produtos.foto_url}
                         alt="Foto"
-                        style={{ width: 72, height: 72, borderRadius: 14, objectFit: 'cover', border: `1px solid ${D.border}`, display: 'block' }}
+                        width={72}
+                        height={72}
+                        loading="lazy"
+                        style={{ borderRadius: 14, objectFit: 'cover', border: `1px solid ${D.border}`, display: 'block' }}
                       />
                       <button
                         type="button"

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import FotoThumb from '@/app/components/FotoThumb'
+import { buscarEstoque } from '@/app/lib/estoqueCache'
 
 type Item = {
   nome: string
@@ -10,12 +11,41 @@ type Item = {
   foto_url: string | null
 }
 
-function BarcodeCell({ codigo }: { codigo: string }) {
+// Antes, todo BarcodeCell gerava o código de barras (import dinâmico do jsbarcode +
+// desenho do SVG) no mesmo instante em que a tabela montava — num catálogo grande
+// isso é centenas de imports+desenhos de uma vez, travando a tela. Agora só gera
+// quando a linha entra (ou está perto de entrar) na viewport.
+function BarcodeCell({ codigo, forcarVisivel }: { codigo: string; forcarVisivel: boolean }) {
   const svgRef = useRef<SVGSVGElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [erro, setErro] = useState(false)
+  const [visivel, setVisivel] = useState(false)
 
   useEffect(() => {
-    if (!svgRef.current) return
+    if (!containerRef.current || visivel) return
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) { setVisivel(true); obs.disconnect() }
+    }, { rootMargin: '200px' }) // gera um pouco antes de aparecer, pra não "piscar" durante o scroll
+    obs.observe(containerRef.current)
+    return () => obs.disconnect()
+  }, [visivel])
+
+  // Imprimir (Ctrl+P, não só o botão 🖨️ desta página) só captura o que já está no
+  // DOM — então força tudo a renderizar antes de qualquer impressão, mesmo o que
+  // ainda não foi visto. O botão de imprimir também força isso explicitamente
+  // (prop forcarVisivel) e espera um frame antes de chamar window.print().
+  useEffect(() => {
+    function forcar() { setVisivel(true) }
+    window.addEventListener('beforeprint', forcar)
+    return () => window.removeEventListener('beforeprint', forcar)
+  }, [])
+
+  useEffect(() => {
+    if (forcarVisivel) setVisivel(true)
+  }, [forcarVisivel])
+
+  useEffect(() => {
+    if (!visivel || !svgRef.current) return
     setErro(false)
     import('jsbarcode').then(({ default: JsBarcode }) => {
       try {
@@ -30,13 +60,15 @@ function BarcodeCell({ codigo }: { codigo: string }) {
         setErro(true)
       }
     })
-  }, [codigo])
+  }, [codigo, visivel])
 
   if (erro) return <span className="text-xs text-red-400">Inválido</span>
 
   return (
-    <div className="flex flex-col items-start gap-0.5">
-      <svg ref={svgRef} />
+    <div ref={containerRef} className="flex flex-col items-start gap-0.5" style={{ minHeight: 48 }}>
+      {visivel
+        ? <svg ref={svgRef} />
+        : <div aria-hidden style={{ width: 120, height: 48, borderRadius: 4, background: '#F3F4F6' }} />}
       <span className="text-xs text-gray-400 font-mono">{codigo}</span>
     </div>
   )
@@ -46,13 +78,12 @@ export default function CodigosBarras() {
   const [dados, setDados] = useState<Item[]>([])
   const [busca, setBusca] = useState('')
   const [loading, setLoading] = useState(true)
+  const [imprimirTudo, setImprimirTudo] = useState(false)
 
   useEffect(() => {
-    fetch('/api/estoque')
-      .then((r) => r.json())
-      .then((json: any[]) => {
-        if (!Array.isArray(json)) return
-        const itens: Item[] = json
+    buscarEstoque()
+      .then((json) => {
+        const itens: Item[] = (json as any[])
           .filter((i) => i.produtos?.codigo_barras)
           .map((i) => ({
             nome: i.produtos?.nome ?? '—',
@@ -63,6 +94,7 @@ export default function CodigosBarras() {
           .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
         setDados(itens)
       })
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
@@ -76,6 +108,16 @@ export default function CodigosBarras() {
       : dados,
     [dados, busca]
   )
+
+  // O botão chama isto em vez de window.print() direto: garante que todo código de
+  // barras (mesmo os que o usuário nunca rolou até ver) esteja desenhado no DOM antes
+  // do navegador "fotografar" a página para impressão.
+  async function imprimir() {
+    await import('jsbarcode') // garante o módulo em cache antes de forçar todas as linhas de uma vez
+    setImprimirTudo(true)
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    window.print()
+  }
 
   function exportarCSV() {
     const header = 'Nome,Fornecedor,Código de Barras'
@@ -136,7 +178,7 @@ export default function CodigosBarras() {
             CSV
           </button>
           <button
-            onClick={() => window.print()}
+            onClick={imprimir}
             className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white shrink-0"
             style={{ background: '#374151' }}
           >
@@ -177,7 +219,7 @@ export default function CodigosBarras() {
                     </td>
                     <td className="px-4 py-3 text-gray-500 hidden sm:table-cell align-top">{item.fornecedor}</td>
                     <td className="px-4 py-3 align-top">
-                      <BarcodeCell codigo={item.codigo_barras} />
+                      <BarcodeCell codigo={item.codigo_barras} forcarVisivel={imprimirTudo} />
                     </td>
                   </tr>
                 ))}

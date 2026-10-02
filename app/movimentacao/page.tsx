@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
+import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 
 type Produto = {
   id: string
@@ -71,11 +72,8 @@ function Movimentacao() {
   useEffect(() => {
     async function buscarItens() {
       try {
-        const [resEstoque, resVal] = await Promise.all([fetch('/api/estoque'), fetch('/api/validades/todos')])
-        if (!resEstoque.ok) { setErro(`HTTP ${resEstoque.status}`); return }
-        const json = await resEstoque.json()
-        if (json.erro) setErro(json.erro)
-        else setItens(json)
+        const [json, resVal] = await Promise.all([buscarEstoque(), fetch('/api/validades/todos')])
+        setItens(json as unknown as Produto[])
 
         if (resVal.ok) {
           const valJson: Validade[] = await resVal.json()
@@ -144,6 +142,7 @@ function Movimentacao() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedbackLotes({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+      invalidarEstoqueCache()
 
       const produtoId = produto.produto_id
       // TODO: estas atualizações de lote são chamadas sequenciais e não atômicas — se uma
@@ -244,6 +243,7 @@ function Movimentacao() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedbackEntrada({ msg: json.erro ?? 'Erro ao registrar', ok: false }); return }
+      invalidarEstoqueCache()
       setItens((prev) => prev.map((item) =>
         item.id === produto.id ? { ...item, qtd_atual: json.qtd_atual, qtd_cozinha: json.qtd_cozinha ?? item.qtd_cozinha } : item
       ))
@@ -312,6 +312,7 @@ function Movimentacao() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedbackEntrada({ msg: json.erro ?? 'Erro ao registrar', ok: false }); return }
+      invalidarEstoqueCache()
       setItens((prev) => prev.map((item) =>
         item.id === produto.id ? { ...item, qtd_atual: json.qtd_atual, qtd_cozinha: json.qtd_cozinha ?? item.qtd_cozinha } : item
       ))

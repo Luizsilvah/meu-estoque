@@ -50,6 +50,11 @@ export async function proxy(request: NextRequest) {
     return redirectResponse
   }
 
+  // /api/cron/* não tem sessão de usuário — é chamado pelo Vercel Cron (server-to-server)
+  // e se autentica com o header Authorization: Bearer CRON_SECRET, verificado dentro da
+  // própria rota. Sem esse bypass, o 401 abaixo bloquearia o cron antes de chegar na rota.
+  if (pathname.startsWith('/api/cron/')) return supabaseResponse
+
   // Rotas de API sem sessão → 401 JSON. NUNCA redireciona: o browser seguiria o
   // 307 e o fetch(...).json() receberia HTML. Cobre TAMBÉM /api/auth/* (me, logout) —
   // login/reset-senha são client-side (supabase-browser), não há endpoint em

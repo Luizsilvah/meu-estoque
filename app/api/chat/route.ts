@@ -1,6 +1,19 @@
 import { createSupabaseServer } from '../../lib/supabase-server'
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
 
+// Nome do canal Realtime Broadcast — um por canal de chat (geral ou grupo).
+// Broadcast, não postgres_changes: o banco usa RLS deny-all (ver
+// supabase/migrations/20260825130000_enable_rls_all_tables.sql) e todo acesso
+// é só via service_role. postgres_changes RESPEITA RLS — com RLS deny-all o
+// cliente (anon key) não receberia nenhuma linha. Broadcast é pub/sub por
+// canal, não depende de policy nenhuma na tabela, e quem já pode ver a tela do
+// chat (login exigido pelo proxy.ts) já conseguia ler qualquer grupo via este
+// mesmo GET hoje (não há checagem de membro aqui) — então não abre nenhuma
+// permissão nova.
+function canalChat(grupo_id: string | null) {
+  return `chat:${grupo_id ?? 'geral'}`
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const grupo_id = searchParams.get('grupo_id')
@@ -42,6 +55,13 @@ export async function POST(request: Request) {
     .single()
 
   if (error) return Response.json({ erro: error.message }, { status: 500 })
+
+  // Best-effort: quem estiver com o chat aberto recebe na hora via Broadcast.
+  // Se falhar (rede, canal sem ninguém ouvindo etc.) não é fatal — a própria
+  // resposta desta request já tem a mensagem (quem enviou vê na hora do mesmo
+  // jeito) e o polling de fallback de 30s cobre o resto.
+  admin.channel(canalChat(grupo_id)).httpSend('nova-mensagem', data).catch(() => {})
+
   return Response.json(data, { status: 201 })
 }
 
@@ -56,9 +76,15 @@ export async function DELETE(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
+  const grupo_id = searchParams.get('grupo_id') || null
   if (!id) return Response.json({ erro: 'id obrigatório' }, { status: 400 })
 
   const { error } = await admin.from('mensagens').delete().eq('id', id)
   if (error) return Response.json({ erro: error.message }, { status: 500 })
+
+  // Avisa quem está com o chat aberto para remover a mensagem na hora (sem isso,
+  // só o admin que apagou veria a remoção — os outros só no próximo reconnect)
+  admin.channel(canalChat(grupo_id)).httpSend('mensagem-apagada', { id }).catch(() => {})
+
   return Response.json({ ok: true })
 }

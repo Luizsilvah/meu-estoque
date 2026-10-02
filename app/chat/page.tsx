@@ -1,8 +1,11 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 
 import { D } from '@/app/lib/theme'
+import { createSupabaseBrowser } from '@/app/lib/supabase-browser'
+import { comprimirImagem } from '@/app/lib/comprimirImagem'
 const sidebar = 'var(--sidebar-bg)'
 
 type Mensagem = {
@@ -106,17 +109,63 @@ export default function Chat() {
     } catch { /* silencioso */ }
   }, [canalAtivo])
 
+  // Realtime via Broadcast (não postgres_changes — ver comentário em
+  // app/api/chat/route.ts sobre por que: RLS deny-all faria postgres_changes
+  // não entregar nada). O servidor manda "nova-mensagem"/"mensagem-apagada"
+  // pro canal do grupo depois de cada insert/delete; aqui só escuta.
+  // Fallback: se o canal cair, volta a buscar a cada 30s (bem menos agressivo
+  // que os 5s de antes) até reconectar — e ao reconectar busca uma vez pra
+  // cobrir o que não chegou via broadcast enquanto esteve desconectado.
   useEffect(() => {
     ultimoIdRef.current = null
     setMensagens([])
     carregarMensagens(true)
-    const interval = setInterval(() => carregarMensagens(false), 5000)
-    return () => clearInterval(interval)
-  }, [carregarMensagens])
+
+    const supabase = createSupabaseBrowser()
+    const canalNome = `chat:${canalAtivo ?? 'geral'}`
+    let conectado = false
+
+    const channel = supabase
+      .channel(canalNome)
+      .on('broadcast', { event: 'nova-mensagem' }, ({ payload }: { payload: Mensagem }) => {
+        setMensagens((prev) => {
+          if (prev.some((m) => m.id === payload.id)) return prev
+          ultimoIdRef.current = payload.id
+          return [...prev, payload].slice(-100)
+        })
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+      })
+      .on('broadcast', { event: 'mensagem-apagada' }, ({ payload }: { payload: { id: string } }) => {
+        setMensagens((prev) => prev.filter((m) => m.id !== payload.id))
+      })
+      .subscribe((status) => {
+        const estavaDesconectado = !conectado
+        conectado = status === 'SUBSCRIBED'
+        if (conectado && estavaDesconectado) carregarMensagens(false) // reconciliação pós-reconexão
+      })
+
+    const fallback = setInterval(() => {
+      if (!conectado) carregarMensagens(false)
+    }, 30000)
+
+    return () => {
+      clearInterval(fallback)
+      supabase.removeChannel(channel)
+    }
+  }, [canalAtivo, carregarMensagens])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [mensagens])
+
+  // Adiciona a mensagem localmente na hora (sem esperar o broadcast de volta —
+  // o handler do canal ignora o eco porque já vê o id aqui) em vez de refazer
+  // um fetch completo de /api/chat a cada envio, como era antes.
+  function adicionarLocal(msg: Mensagem) {
+    ultimoIdRef.current = msg.id
+    setMensagens((prev) => [...prev, msg].slice(-100))
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+  }
 
   async function enviar() {
     const msg = texto.trim()
@@ -128,9 +177,10 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ texto: msg, grupo_id: canalAtivo }),
       })
+      const json = await res.json()
       if (!res.ok) return
       setTexto('')
-      await carregarMensagens(true)
+      adicionarLocal(json)
       inputRef.current?.focus()
     } catch { /* silencioso */ }
     finally { setEnviando(false) }
@@ -145,8 +195,9 @@ export default function Chat() {
     if (!file) return
     setUploadando(true)
     try {
+      const comprimido = await comprimirImagem(file)
       const form = new FormData()
-      form.append('file', file)
+      form.append('file', comprimido)
       const res = await fetch('/api/chat/upload', { method: 'POST', body: form })
       const json = await res.json()
       if (!res.ok || !json.url) return
@@ -155,8 +206,9 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ texto: '', imagem_url: json.url, grupo_id: canalAtivo }),
       })
+      const jsonMsg = await resMsg.json()
       if (!resMsg.ok) return
-      await carregarMensagens(true)
+      adicionarLocal(jsonMsg)
     } catch { /* silencioso */ }
     finally {
       setUploadando(false)
@@ -175,7 +227,7 @@ export default function Chat() {
 
   async function apagarMensagem(id: string) {
     setMsgSelecionada(null)
-    await fetch(`/api/chat?id=${id}`, { method: 'DELETE' })
+    await fetch(`/api/chat?id=${id}&grupo_id=${canalAtivo ?? ''}`, { method: 'DELETE' })
     setMensagens((prev) => prev.filter((m) => m.id !== id))
   }
 
@@ -387,7 +439,15 @@ export default function Chat() {
                         onTouchMove={cancelarLongPress}
                       >
                         {m.imagem_url && (
-                          <img src={m.imagem_url} alt="imagem" style={{ maxWidth: '100%', display: 'block', maxHeight: 260, objectFit: 'cover' }} />
+                          // Posição relative + fill: o tamanho real da imagem enviada é
+                          // desconhecido (foto de qualquer câmera/galeria), então a caixa
+                          // fica fixa (280×260) e a imagem cobre com crop — troca o "encolhe
+                          // mantendo proporção" de antes por uma caixa sempre do mesmo
+                          // tamanho (padrão comum de bolha de chat; dá pra revisar se não
+                          // gostar do visual com fotos bem retangulares).
+                          <div style={{ position: 'relative', width: 280, maxWidth: '100%', height: 260 }}>
+                            <Image src={m.imagem_url} alt="imagem" fill sizes="280px" loading="lazy" style={{ objectFit: 'cover' }} />
+                          </div>
                         )}
                         {m.texto && (
                           <div style={{ padding: '10px 14px' }}>

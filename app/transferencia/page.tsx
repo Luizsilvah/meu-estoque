@@ -5,6 +5,7 @@ import Link from 'next/link'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
+import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 
 type Item = {
   id: string
@@ -54,10 +55,10 @@ function TransferenciaContent() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/estoque').then((r) => r.json()),
+      buscarEstoque(),
       fetch('/api/validades/todos').then((r) => r.ok ? r.json() : []),
     ]).then(([jsonE, jsonV]) => {
-      if (!jsonE.erro) setDados(jsonE)
+      setDados(jsonE as unknown as Item[])
       if (Array.isArray(jsonV)) {
         const mapa: Record<string, Validade[]> = {}
         for (const v of jsonV as Validade[]) {
@@ -66,7 +67,7 @@ function TransferenciaContent() {
         }
         setValidadesPorProduto(mapa)
       }
-    }).finally(() => setLoading(false))
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   // Auto-seleciona produto passado via ?produto=NAME (ex: vindo do scanner da home)
@@ -117,6 +118,7 @@ function TransferenciaContent() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setErroTransf(json.erro ?? 'Erro ao transferir'); return }
+      invalidarEstoqueCache()
       const novaQtdCozinha: number = json.qtd_cozinha
       setDados((prev) => prev.map((item) =>
         item.id === selecionado.id ? { ...item, qtd_cozinha: novaQtdCozinha } : item

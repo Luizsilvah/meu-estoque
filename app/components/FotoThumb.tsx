@@ -1,4 +1,5 @@
 'use client'
+import Image from 'next/image'
 import { D } from '@/app/lib/theme'
 
 type Props = {
@@ -11,8 +12,16 @@ type Props = {
 export default function FotoThumb({ src, size = 40, radius = 10, style }: Props) {
   const base: React.CSSProperties = { width: size, height: size, borderRadius: radius, flexShrink: 0, ...style }
   if (src) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" style={{ ...base, objectFit: 'cover' }} />
+    return (
+      <Image
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        loading="lazy"
+        style={{ ...base, objectFit: 'cover' }}
+      />
+    )
   }
   return (
     <div style={{ ...base, background: D.input, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: Math.round(size * 0.45) }}>

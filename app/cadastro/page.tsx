@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import BarcodeCameraButton from '../components/BarcodeCameraButton'
 
 import { D } from '@/app/lib/theme'
+import { invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 
 type Fornecedor = { id: string; nome: string }
 type Aba = 'produto' | 'fornecedor'
@@ -70,6 +71,7 @@ export default function Cadastro() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedbackProduto({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+      invalidarEstoqueCache()
       setFeedbackProduto({ msg: `Produto "${json.nome}" cadastrado!`, ok: true })
       setNomeProduto(''); setFornecedorId(''); setUnidade('')
       setQtdAtual(''); setQtdBase(''); setQtdMax(''); setCodigoBarras(''); setPrecoCusto('')

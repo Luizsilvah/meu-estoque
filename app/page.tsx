@@ -30,6 +30,8 @@ type Dashboard = {
   listaPedir: { nome: string; qtd_atual: number; pedir: number }[]
   listaVencendo: { nome: string; data_validade: string; dias: number }[]
   valorEstoque: number
+  criticos: number
+  comprarQuinta: number
 }
 
 type ItemPrevisao = {
@@ -97,11 +99,12 @@ const allBotoes: BtnConfig[] = [
   { id: 'graficos',     href: '/graficos',       emoji: '📈', label: 'Gráficos' },
   { id: 'conferencia',  href: '/conferencia',    emoji: '✅', label: 'Conferência' },
   { id: 'scanner',      href: '/scanner',        emoji: '🔍', label: 'Scanner' },
+  { id: 'compras-quinta', href: '/compras-quinta', emoji: '🗓️', label: 'Compras quinta' },
 ]
 
 const DEFAULT_CONFIG = {
   frente: ['estoque', 'movimentacao'],
-  painel: ['historico', 'chat', 'checklist', 'transferencia', 'nota', 'equipe', 'codigos', 'relatorio', 'graficos', 'conferencia', 'scanner'],
+  painel: ['historico', 'chat', 'checklist', 'compras-quinta', 'transferencia', 'nota', 'equipe', 'codigos', 'relatorio', 'graficos', 'conferencia', 'scanner'],
 }
 
 const FUNCIONARIO_CONFIG = {
@@ -140,7 +143,13 @@ export default function Home() {
   useEffect(() => {
     if ('Notification' in window && 'PushManager' in window) {
       setPushSuportado(true)
-      if (Notification.permission === 'granted') setPushAtivo(true)
+      if (Notification.permission === 'granted') {
+        setPushAtivo(true)
+        // Re-registra a subscription existente em segundo plano — não pede permissão
+        // de novo (já concedida) e é o jeito das subscriptions antigas (de antes do
+        // alerta de compra de quinta) ganharem o user_id sem o usuário fazer nada.
+        void subscribePush()
+      }
     }
   }, [])
 
@@ -429,6 +438,31 @@ export default function Home() {
                   {dados.valorEstoque.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </p>
               </div>
+            )}
+            {((dados?.criticos ?? 0) > 0 || (dados?.comprarQuinta ?? 0) > 0) && (
+              <Link href="/compras-quinta" style={{
+                gridColumn: 'span 2',
+                background: 'var(--card2)',
+                border: `1px solid ${C.border}`,
+                borderRadius: 16,
+                padding: '14px 16px',
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <div>
+                  <p style={{ color: C.textMuted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
+                    Compra de quinta
+                  </p>
+                  <p style={{ fontSize: 13, color: C.textSecondary }}>
+                    <strong style={{ color: C.red, fontSize: 18 }}>{dados?.criticos ?? 0}</strong> crítico{(dados?.criticos ?? 0) !== 1 ? 's' : ''}
+                    {'  ·  '}
+                    <strong style={{ color: C.yellow, fontSize: 18 }}>{dados?.comprarQuinta ?? 0}</strong> p/ comprar
+                  </p>
+                </div>
+                <span style={{ fontSize: 20 }}>🗓️</span>
+              </Link>
             )}
           </div>
         )}

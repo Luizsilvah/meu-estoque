@@ -4,6 +4,7 @@ import Link from 'next/link'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
+import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 
 type Item = {
   id: string
@@ -67,10 +68,8 @@ export default function Conferencia() {
   useEffect(() => {
     async function carregar() {
       try {
-        const [resE, resV, resMe] = await Promise.all([fetch('/api/estoque'), fetch('/api/validades/todos'), fetch('/api/auth/me')])
-        const jsonE = await resE.json()
-        if (jsonE.erro) { setErro(jsonE.erro); return }
-        setDados(jsonE)
+        const [jsonE, resV, resMe] = await Promise.all([buscarEstoque(), fetch('/api/validades/todos'), fetch('/api/auth/me')])
+        setDados(jsonE as unknown as Item[])
         if (resV.ok) {
           const all: Validade[] = await resV.json()
           const mapa: Record<string, Validade[]> = {}
@@ -113,6 +112,7 @@ export default function Conferencia() {
         setErroZerar(json?.erro ?? 'Erro ao zerar o estoque')
         return
       }
+      invalidarEstoqueCache()
       setDados((prev) => prev.map((item) => ({ ...item, qtd_atual: 0, qtd_cozinha: 0 })))
       setValidadesPorProduto({})
       setConferidos(new Set())
@@ -132,20 +132,19 @@ export default function Conferencia() {
     setFeedback(null)
     setCarregandoModal(true)
     try {
-      const res = await fetch('/api/estoque')
-      if (res.ok) {
-        const lista: Item[] = await res.json()
-        const fresco = lista.find((i) => i.id === item.id)
-        if (fresco) {
-          setDados((prev) => prev.map((i) => i.id === fresco.id ? fresco : i))
-          setEditando(fresco)
-          const cozinha = fresco.qtd_cozinha ?? 0
-          const principal = Math.max(0, fresco.qtd_atual - cozinha)
-          setFormCozinha(String(cozinha))
-          setFormPrincipal(String(principal))
-          setFormTotal(String(fresco.qtd_atual))
-          return
-        }
+      // forcar=true: ignora o cache de 30s de propósito — ao abrir pra editar,
+      // precisa do valor mais fresco possível, não do que já estava em memória.
+      const lista = await buscarEstoque(true) as unknown as Item[]
+      const fresco = lista.find((i) => i.id === item.id)
+      if (fresco) {
+        setDados((prev) => prev.map((i) => i.id === fresco.id ? fresco : i))
+        setEditando(fresco)
+        const cozinha = fresco.qtd_cozinha ?? 0
+        const principal = Math.max(0, fresco.qtd_atual - cozinha)
+        setFormCozinha(String(cozinha))
+        setFormPrincipal(String(principal))
+        setFormTotal(String(fresco.qtd_atual))
+        return
       }
     } catch { /* ignora — usa valor local como fallback */ }
     finally { setCarregandoModal(false) }
@@ -193,6 +192,7 @@ export default function Conferencia() {
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+      invalidarEstoqueCache()
       const diff = total - editando.qtd_atual
       setDados((prev) => prev.map((item) =>
         item.id === editando.id ? { ...item, qtd_atual: json.qtd_atual, qtd_cozinha: json.qtd_cozinha } : item

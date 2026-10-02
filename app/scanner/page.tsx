@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { D } from '@/app/lib/theme'
 import BarcodeCameraButton from '@/app/components/BarcodeCameraButton'
+import { invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 
 type Produto = {
   produto_id: string
@@ -83,6 +84,7 @@ export default function Scanner() {
         setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false })
         return
       }
+      invalidarEstoqueCache()
       setProduto((p) => p ? { ...p, qtd_atual: json.qtd_atual ?? p.qtd_atual } : p)
       setFeedback({ msg: modal.tipo === 'entrada' ? 'Entrada registrada!' : 'Saída registrada!', ok: true })
       setTimeout(fecharModal, 900)
