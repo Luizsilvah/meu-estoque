@@ -23,7 +23,7 @@ export async function GET() {
         .from('validades')
         .select('data_validade, produto_id, produtos(nome)')
         .lte('data_validade', em7dias.toISOString().slice(0, 10)),
-      admin.from('vw_previsao_compras').select('status'),
+      admin.from('vw_previsao_compras').select('produto_id, status, qtd_sugerida'),
       // Card "Validades divergentes": só SOBRA + FALTA (SEM_VALIDADE fica de fora)
       admin
         .from('vw_validades_divergentes')
@@ -38,6 +38,18 @@ export async function GET() {
   // vão ficar abaixo do mínimo antes da próxima quinta (ver vw_previsao_compras)
   const criticos = (previsaoCompras ?? []).filter((i) => i.status === 'CRITICO').length
   const comprarQuinta = (previsaoCompras ?? []).filter((i) => i.status === 'COMPRAR_QUINTA').length
+
+  // ≈ valor da compra de quinta = soma(qtd_sugerida × preco_custo) dos críticos +
+  // a comprar. O preço vem do join de estoque já buscado acima (sem consulta extra);
+  // itens sem preço ficam de fora.
+  const precoPorProduto = new Map(
+    (estoque ?? []).map((item) => [item.produto_id, (item.produtos as { preco_custo?: number | null } | null)?.preco_custo ?? null]),
+  )
+  const valorCompraQuinta = (previsaoCompras ?? []).reduce((soma, i) => {
+    if (i.status !== 'CRITICO' && i.status !== 'COMPRAR_QUINTA') return soma
+    const preco = precoPorProduto.get(i.produto_id) ?? null
+    return preco != null ? soma + Number(i.qtd_sugerida) * Number(preco) : soma
+  }, 0)
 
   if (erroEstoque) return Response.json({ erro: erroEstoque.message }, { status: 500 })
 
@@ -87,5 +99,5 @@ export async function GET() {
     return preco != null ? soma + item.qtd_atual * preco : soma
   }, 0)
 
-  return Response.json({ total, precisamPedir: precisamPedir.length, estoqueOk, vencendo7d, listaPedir, listaVencendo, valorEstoque, criticos, comprarQuinta, validadesDivergentes })
+  return Response.json({ total, precisamPedir: precisamPedir.length, estoqueOk, vencendo7d, listaPedir, listaVencendo, valorEstoque, criticos, comprarQuinta, valorCompraQuinta, validadesDivergentes })
 }

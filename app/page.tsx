@@ -25,7 +25,24 @@ type Dashboard = {
   vencendo7d: number
   criticos: number
   comprarQuinta: number
+  valorCompraQuinta?: number
   validadesDivergentes: number | null
+}
+
+type MinhaAcao = { id: string; tipo: 'entrada' | 'saida'; quantidade: number; data_hora: string; produto: string }
+
+const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+
+// "hoje, 09:42" / "ontem, 18:03" / "03/10, 14:10"
+function quando(iso: string) {
+  const d = new Date(iso)
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  const dia = new Date(d); dia.setHours(0, 0, 0, 0)
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const diff = Math.round((hoje.getTime() - dia.getTime()) / 86400000)
+  if (diff === 0) return `hoje, ${hora}`
+  if (diff === 1) return `ontem, ${hora}`
+  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}, ${hora}`
 }
 
 type ScannerProduto = { produto_id: string; nome: string; unidade: string; qtd_atual: number }
@@ -121,6 +138,7 @@ export default function Home() {
   const [nomeUsuario, setNomeUsuario] = useState('')
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
   const [permissoes, setPermissoes] = useState<Record<string, boolean>>({})
+  const [minhasAcoes, setMinhasAcoes] = useState<MinhaAcao[]>([])
   const [busca, setBusca] = useState('')
   const [menuAberto, setMenuAberto] = useState(false)
   const [pushAtivo, setPushAtivo] = useState(false)
@@ -207,6 +225,15 @@ export default function Home() {
   // Funcionário com até 3 funções: lista simples, um botão grande por linha.
   // Admin ou quem tem mais: ações rápidas + grade "Mais".
   const modoLista = isAdmin === false && liberadas.length <= 3
+
+  // "Suas últimas ações" — só no layout de lista do funcionário (admin nunca busca)
+  useEffect(() => {
+    if (!modoLista) return
+    fetch('/api/minhas-acoes')
+      .then((r) => r.json())
+      .then((json) => { if (Array.isArray(json)) setMinhasAcoes(json) })
+      .catch(() => {})
+  }, [modoLista])
   const rapidas = ACOES_RAPIDAS.map((id) => liberadas.find((f) => f.id === id)).filter((f): f is Funcao => !!f)
   const mais = liberadas.filter((f) => !ACOES_RAPIDAS.includes(f.id) && !NA_BARRA.includes(f.id))
 
@@ -274,7 +301,7 @@ export default function Home() {
               {mostraCompra && (
                 <CardAtencao
                   href="/compras-quinta" icone="cart" cor={COR.vermelho} titulo="Compra de quinta" numero={totalCompra}
-                  texto={`${dados?.criticos ?? 0} crítico${dados?.criticos === 1 ? '' : 's'} · ${dados?.comprarQuinta ?? 0} a comprar`}
+                  texto={`${dados?.criticos ?? 0} crítico${dados?.criticos === 1 ? '' : 's'} · ${dados?.comprarQuinta ?? 0} a comprar${dados?.valorCompraQuinta ? ` · ≈ ${BRL.format(dados.valorCompraQuinta)}` : ''}`}
                 />
               )}
               {mostraValidades && (
@@ -314,6 +341,33 @@ export default function Home() {
                   Nenhuma função liberada ainda. Fale com o administrador.
                 </p>
               )}
+            </div>
+          </section>
+        )}
+
+        {/* ── SUAS ÚLTIMAS AÇÕES — funcionário no layout de lista ── */}
+        {modoLista && minhasAcoes.length > 0 && (
+          <section style={{ marginBottom: 22 }}>
+            <p style={tituloSecao}>Suas últimas ações</p>
+            <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 18, overflow: 'hidden' }}>
+              {minhasAcoes.map((a, idx) => {
+                const entrada = a.tipo === 'entrada'
+                const cor = entrada ? COR.verde : COR.vermelho
+                return (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderTop: idx > 0 ? `1px solid ${D.border}` : 'none' }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', color: D.text, fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.produto}</span>
+                      <span suppressHydrationWarning style={{ display: 'block', color: D.text2, fontSize: 12, marginTop: 2 }}>{quando(a.data_hora)}</span>
+                    </span>
+                    <span style={{
+                      flexShrink: 0, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 20, whiteSpace: 'nowrap',
+                      color: cor, background: `color-mix(in srgb, ${cor} 14%, transparent)`,
+                    }}>
+                      {entrada ? 'Entrada' : 'Saída'} {entrada ? '+' : '−'}{a.quantidade}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </section>
         )}

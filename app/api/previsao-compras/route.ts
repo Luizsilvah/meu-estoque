@@ -18,6 +18,8 @@ export type ItemPrevisaoCompra = {
   estoque_previsto: number
   qtd_sugerida: number
   status: 'CRITICO' | 'COMPRAR_QUINTA' | 'OK'
+  // Vem de produtos (não da view); null = sem preço cadastrado
+  preco_custo: number | null
 }
 
 export async function GET() {
@@ -33,5 +35,13 @@ export async function GET() {
 
   if (error) return Response.json({ erro: error.message }, { status: 500 })
 
-  return Response.json(data as ItemPrevisaoCompra[])
+  // preco_custo fica em produtos — busca à parte e junta por produto_id, sem mexer na view
+  const ids = (data ?? []).map((i) => i.produto_id)
+  const { data: precos } = ids.length
+    ? await admin.from('produtos').select('id, preco_custo').in('id', ids)
+    : { data: [] as { id: string; preco_custo: number | null }[] }
+  const precoPorId = new Map((precos ?? []).map((p) => [p.id, p.preco_custo as number | null]))
+
+  const itens = (data ?? []).map((i) => ({ ...i, preco_custo: precoPorId.get(i.produto_id) ?? null }))
+  return Response.json(itens as ItemPrevisaoCompra[])
 }
