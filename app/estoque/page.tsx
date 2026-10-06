@@ -58,7 +58,8 @@ function EstoqueContent() {
   const [loading, setLoading] = useState(true)
 
   const [validadesPorProduto, setValidadesPorProduto] = useState<Record<string, Validade[]>>({})
-  const [busca, setBusca] = useState('')
+  // ?busca=TERMO vindo da busca da tela inicial já chega preenchido
+  const [busca, setBusca] = useState(() => searchParams.get('busca') ?? '')
 
   const [editando, setEditando] = useState<ItemEstoque | null>(null)
   const [abaModal, setAbaModal] = useState<AbaModal>('produto')
