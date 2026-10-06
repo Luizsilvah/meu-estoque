@@ -31,6 +31,24 @@ type MotivoPendente = {
   diff: number
 }
 
+// Linha do modal de lote ao AUMENTAR: data de validade + quantidade (texto cru
+// do input; parse só na validação). key só serve de chave estável no React.
+type LinhaEntrada = { key: number; data: string; qtd: string }
+
+// Quantidades de lote são inteiras na RPC (jsonb_to_recordset ... quantidade integer).
+function parseQtd(v: string): number {
+  const n = Math.floor(Number(v))
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+function formatarData(data: string): string {
+  return new Date(data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function lotesOrdenados(vals: Validade[]): Validade[] {
+  return [...vals].sort((a, b) => a.data_validade.localeCompare(b.data_validade))
+}
+
 const inputStyle: React.CSSProperties = {
   width: '100%', background: D.input, border: `1px solid ${D.border}`, borderRadius: 12,
   padding: '10px 14px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box',
@@ -63,8 +81,8 @@ export default function Conferencia() {
   const [motivoPendente, setMotivoPendente] = useState<MotivoPendente | null>(null)
   const [registrandoMotivo, setRegistrandoMotivo] = useState(false)
   const [tipoMotivoEscolhido, setTipoMotivoEscolhido] = useState<string | null>(null)
-  const [mostrarInputNovaData, setMostrarInputNovaData] = useState(false)
-  const [novaDataEntrada, setNovaDataEntrada] = useState('')
+  const [linhasEntrada, setLinhasEntrada] = useState<LinhaEntrada[]>([])
+  const [qtdSaidaPorLote, setQtdSaidaPorLote] = useState<Record<string, string>>({})
 
   useEffect(() => {
     async function carregar() {
@@ -244,45 +262,53 @@ export default function Conferencia() {
     if (!motivoPendente) return
     setFeedback(null)
     const prodId = motivoPendente.item.produtos?.id ?? ''
-    const vals = validadesPorProduto[prodId] ?? []
-    // Correção ao aumentar: sempre pede a validade (nova ou lote existente),
-    // igual entrada. Ao diminuir: só pede lote se houver algum cadastrado.
-    if (tipo === 'correcao') {
-      if (motivoPendente.diff > 0 || vals.length > 0) { setTipoMotivoEscolhido(tipo); return }
-      await finalizarMotivo(null, tipo); return
+    const vals = lotesOrdenados(validadesPorProduto[prodId] ?? [])
+    const { diff } = motivoPendente
+
+    // Aumentou (entrada/correção): sempre abre o modal de lotes, com 1 linha
+    // já trazendo o delta inteiro — o usuário só precisa pôr a data.
+    if (diff > 0 && (tipo === 'entrada' || tipo === 'correcao')) {
+      setLinhasEntrada([{ key: Date.now(), data: '', qtd: String(diff) }])
+      setTipoMotivoEscolhido(tipo)
+      return
     }
-    // Para saídas, pede validade antes se existirem lotes cadastrados
-    if ((tipo === 'saida_uso' || tipo === 'descarte_vencido') && motivoPendente.diff < 0) {
-      if (vals.length > 0) { setTipoMotivoEscolhido(tipo); return }
+
+    // Diminuiu: se há lotes, abre o modal já pré-preenchido em FEFO (tira
+    // primeiro do que vence antes até completar o delta). Sem lote nenhum
+    // não há o que escolher — salva direto, sem tocar validade.
+    if (diff < 0 && vals.length > 0) {
+      let restante = Math.abs(diff)
+      const mapa: Record<string, string> = {}
+      for (const v of vals) {
+        const tira = Math.min(v.quantidade, restante)
+        mapa[v.id] = tira > 0 ? String(tira) : ''
+        restante -= tira
+      }
+      setQtdSaidaPorLote(mapa)
+      setTipoMotivoEscolhido(tipo)
+      return
     }
-    // Para entradas, sempre pede validade (nova ou existente)
-    if (tipo === 'entrada' && motivoPendente.diff > 0) {
-      setTipoMotivoEscolhido(tipo); return
-    }
-    await finalizarMotivo(null, tipo)
+
+    await finalizarMotivo(tipo, [], [])
   }
 
-  // loteEscolhido: lote existente selecionado no modal (pode ser de "somar",
-  // numa entrada/correção que aumentou, ou de "remover", numa saída/correção
-  // que diminuiu — chamarConferenciaAjustar decide pelo sinal do diff).
-  async function finalizarMotivo(loteEscolhido: Validade | null, tipoOverride?: string, novaDataVal?: string) {
+  function fecharModalLote() {
+    setTipoMotivoEscolhido(null)
+    setLinhasEntrada([])
+    setQtdSaidaPorLote({})
+    setFeedback(null)
+  }
+
+  async function finalizarMotivo(
+    tipo: string,
+    lotesAdd: { data_validade: string; quantidade: number }[],
+    lotesRemover: { validade_id: string; quantidade: number }[],
+  ) {
     if (!motivoPendente) return
-    const tipo = tipoOverride ?? tipoMotivoEscolhido
-    if (!tipo) return
-    const { item, novaQtdTotal, novaQtdCozinha, diff } = motivoPendente
+    const { item, novaQtdTotal, novaQtdCozinha } = motivoPendente
     setRegistrandoMotivo(true)
     setFeedback(null)
     try {
-      const lotesAdd: { data_validade: string; quantidade: number }[] = []
-      const lotesRemover: { validade_id: string; quantidade: number }[] = []
-
-      if (diff > 0) {
-        const data = loteEscolhido?.data_validade ?? novaDataVal
-        if (data) lotesAdd.push({ data_validade: data, quantidade: diff })
-      } else if (diff < 0 && loteEscolhido) {
-        lotesRemover.push({ validade_id: loteEscolhido.id, quantidade: Math.abs(diff) })
-      }
-
       const resultado = await chamarConferenciaAjustar({
         produtoId: item.produto_id, novaQtdAtual: novaQtdTotal, novaQtdCozinha, tipo, lotesAdd, lotesRemover,
       })
@@ -311,8 +337,8 @@ export default function Conferencia() {
       // continua aberto com a mensagem visível para o usuário tentar de novo.)
       setMotivoPendente(null)
       setTipoMotivoEscolhido(null)
-      setMostrarInputNovaData(false)
-      setNovaDataEntrada('')
+      setLinhasEntrada([])
+      setQtdSaidaPorLote({})
     } catch (e) {
       setFeedback({ msg: e instanceof Error ? e.message : 'Erro ao salvar', ok: false })
     } finally {
@@ -529,63 +555,203 @@ export default function Conferencia() {
 
       {/* Modal selecionar validade (lote) */}
       {motivoPendente && tipoMotivoEscolhido && (() => {
-        const isCorrecao = tipoMotivoEscolhido === 'correcao'
-        // Correção que aumentou se comporta como entrada (pode somar num lote
-        // existente ou abrir data nova) — só correção que diminuiu e as saídas
-        // (saida_uso/descarte_vencido) só escolhem entre os lotes existentes.
-        const isEntrada = tipoMotivoEscolhido === 'entrada' || (isCorrecao && motivoPendente.diff > 0)
+        const tipo = tipoMotivoEscolhido
+        const isCorrecao = tipo === 'correcao'
+        // Aumentou (entrada ou correção pra cima): N linhas data+qtd, podendo
+        // somar num lote existente (lotes_add com a mesma data). Diminuiu
+        // (saídas ou correção pra baixo): qtd a tirar de cada lote existente.
+        const aumenta = motivoPendente.diff > 0
+        const alvo = Math.abs(motivoPendente.diff)
+        const unidade = motivoPendente.item.produtos?.unidade ?? ''
         const prodId = motivoPendente.item.produtos?.id ?? ''
-        const vals = [...(validadesPorProduto[prodId] ?? [])].sort((a, b) => a.data_validade.localeCompare(b.data_validade))
+        const vals = lotesOrdenados(validadesPorProduto[prodId] ?? [])
+        const semControle = vals.length === 0
+
+        let soma = 0
+        let alvoContador = alvo
+        let motivoBloqueio = ''
+        let aviso = ''
+        const lotesAdd: { data_validade: string; quantidade: number }[] = []
+        const lotesRemover: { validade_id: string; quantidade: number }[] = []
+
+        if (aumenta) {
+          soma = linhasEntrada.reduce((s, l) => s + parseQtd(l.qtd), 0)
+          const algumaData = linhasEntrada.some((l) => l.data)
+          // Produto sem nenhum lote: validade opcional — sem data em nenhuma
+          // linha, salva só a quantidade. Se preencheu alguma data, valida normal.
+          if (semControle) aviso = 'Produto sem controle de validade — a data é opcional.'
+          if (!(semControle && !algumaData)) {
+            if (linhasEntrada.some((l) => parseQtd(l.qtd) > 0 && !l.data)) motivoBloqueio = 'Informe a data de validade de todos os lotes.'
+            else if (linhasEntrada.some((l) => l.data && parseQtd(l.qtd) === 0)) motivoBloqueio = 'Informe a quantidade de todos os lotes.'
+            else if (soma < alvo) motivoBloqueio = `Faltam ${alvo - soma} ${unidade} nos lotes.`
+            else if (soma > alvo) motivoBloqueio = `Os lotes passam ${soma - alvo} ${unidade} do ajuste.`
+            if (!motivoBloqueio) {
+              // Junta linhas com a mesma data (a RPC somaria igual, mas manda limpo).
+              const porData = new Map<string, number>()
+              for (const l of linhasEntrada) {
+                const q = parseQtd(l.qtd)
+                if (l.data && q > 0) porData.set(l.data, (porData.get(l.data) ?? 0) + q)
+              }
+              for (const [data_validade, quantidade] of porData) lotesAdd.push({ data_validade, quantidade })
+            }
+          }
+        } else {
+          const disponivel = vals.reduce((s, v) => s + v.quantidade, 0)
+          for (const v of vals) {
+            const q = Math.min(parseQtd(qtdSaidaPorLote[v.id] ?? ''), v.quantidade)
+            soma += q
+            if (q > 0) lotesRemover.push({ validade_id: v.id, quantidade: q })
+          }
+          // Se os lotes somam menos que o delta (estoque e validades fora de
+          // sincronia), exige tirar tudo que dá dos lotes; o resto sai sem lote.
+          alvoContador = Math.min(alvo, disponivel)
+          if (disponivel < alvo) aviso = `Os lotes cadastrados somam só ${disponivel} ${unidade} — os outros ${alvo - disponivel} saem sem lote.`
+          if (soma < alvoContador) motivoBloqueio = `Faltam ${alvoContador - soma} ${unidade} nos lotes.`
+          else if (soma > alvoContador) motivoBloqueio = `Os lotes passam ${soma - alvoContador} ${unidade} do ajuste.`
+        }
+
+        const podeSalvar = !motivoBloqueio && !registrandoMotivo
+        const contadorOk = soma === alvoContador
+
+        function somarEmLoteExistente(data: string) {
+          setLinhasEntrada((prev) => {
+            if (prev.some((l) => l.data === data)) return prev
+            const vazia = prev.findIndex((l) => !l.data)
+            if (vazia >= 0) return prev.map((l, i) => i === vazia ? { ...l, data } : l)
+            const resto = alvo - prev.reduce((s, l) => s + parseQtd(l.qtd), 0)
+            return [...prev, { key: Date.now(), data, qtd: resto > 0 ? String(resto) : '' }]
+          })
+        }
+
+        function adicionarLinha() {
+          setLinhasEntrada((prev) => {
+            const resto = alvo - prev.reduce((s, l) => s + parseQtd(l.qtd), 0)
+            return [...prev, { key: Date.now(), data: '', qtd: resto > 0 ? String(resto) : '' }]
+          })
+        }
+
+        const campoStyle: React.CSSProperties = { ...inputStyle, fontSize: 16, padding: '12px 10px', minWidth: 0 }
+
         return (
           <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 70, background: 'rgba(0,0,0,0.6)' }}>
-            <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ width: '100%', maxWidth: 480, maxHeight: '92vh', overflowY: 'auto', overflowX: 'hidden', background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 20px 40px', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
               <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
               <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>
-                {isCorrecao && isEntrada ? 'Em qual validade entra a correção?' : isCorrecao ? 'Qual lote foi corrigido?' : isEntrada ? 'Em qual validade entra?' : 'De qual validade?'}
+                {isCorrecao && aumenta ? 'Em qual validade entra a correção?' : isCorrecao ? 'De quais lotes sai a correção?' : aumenta ? 'Em qual validade entra?' : 'De quais lotes sai?'}
               </p>
-              <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 20 }}>{motivoPendente.item.produtos?.nome}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {vals.map((v) => {
-                  const dias = diasAteVencer(v.data_validade)
-                  const dataFmt = new Date(v.data_validade + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                  const cor = dias < 0 ? '#EF4444' : dias <= 7 ? '#F97316' : D.text
-                  return (
-                    <button key={v.id} onClick={() => finalizarMotivo(v)} disabled={registrandoMotivo}
-                      style={{ padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: cor }}>{dataFmt}{dias < 0 ? ' · Vencido' : ''}</span>
-                      <span style={{ color: D.text2, fontSize: 13 }}>{v.quantidade} {motivoPendente.item.produtos?.unidade}</span>
-                    </button>
-                  )
-                })}
-                {isEntrada && (
-                  mostrarInputNovaData ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <input type="date" value={novaDataEntrada} onChange={(e) => setNovaDataEntrada(e.target.value)} autoFocus
-                        style={{ width: '100%', background: D.input, border: `1px solid ${D.border}`, borderRadius: 12, padding: '10px 14px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box' }} />
-                      <button onClick={() => { if (novaDataEntrada) finalizarMotivo(null, undefined, novaDataEntrada) }}
-                        disabled={!novaDataEntrada || registrandoMotivo}
-                        style={{ padding: '14px', borderRadius: 16, background: '#6366F1', color: '#fff', border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: (!novaDataEntrada || registrandoMotivo) ? 0.5 : 1 }}>
-                        Confirmar data
-                      </button>
+              <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{motivoPendente.item.produtos?.nome}</p>
+              <p style={{ color: aumenta ? '#10B981' : '#EF4444', fontSize: 13, fontWeight: 600, marginBottom: 16 }}>
+                {aumenta ? `↑ Aumentou ${alvo} ${unidade}` : `↓ Diminuiu ${alvo} ${unidade}`}
+              </p>
+
+              {aumenta ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {vals.length > 0 && (
+                    <div>
+                      <label style={labelStyle}>Somar num lote existente</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {vals.map((v) => {
+                          const dias = diasAteVencer(v.data_validade)
+                          const vencido = dias < 0
+                          const usado = linhasEntrada.some((l) => l.data === v.data_validade)
+                          return (
+                            <button key={v.id} type="button" onClick={() => somarEmLoteExistente(v.data_validade)} disabled={registrandoMotivo || usado}
+                              style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid ${vencido ? 'rgba(239,68,68,0.4)' : usado ? '#6366F1' : D.border}`, background: vencido ? 'rgba(239,68,68,0.08)' : usado ? 'rgba(99,102,241,0.08)' : D.input, color: vencido ? '#EF4444' : dias <= 7 ? '#F97316' : D.text, fontSize: 13, fontWeight: 600, cursor: usado ? 'default' : 'pointer', opacity: usado ? 0.7 : 1 }}>
+                              {usado ? '✓ ' : '+ '}{formatarData(v.data_validade)}{vencido ? ' · Vencido' : ''}
+                              <span style={{ color: D.text2, fontWeight: 500 }}> · {v.quantidade} {unidade}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                  ) : (
-                    <button onClick={() => setMostrarInputNovaData(true)} disabled={registrandoMotivo}
-                      style={{ padding: '14px 16px', borderRadius: 16, border: '1px solid #6366F1', background: 'rgba(99,102,241,0.08)', color: '#6366F1', fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                      📅 Validade nova
-                    </button>
-                  )
-                )}
-                <button onClick={() => finalizarMotivo(null)} disabled={registrandoMotivo}
-                  style={{ padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`, background: 'none', color: D.text2, fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'center' }}>
-                  {isCorrecao ? 'Sem validade específica' : 'Não especificar'}
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 88px 44px', gap: 8, marginTop: 4 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>Validade{semControle ? ' (opcional)' : ''}</label>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>Qtd</label>
+                    <span />
+                  </div>
+                  {linhasEntrada.map((l) => {
+                    const dias = l.data ? diasAteVencer(l.data) : null
+                    const vencido = dias != null && dias < 0
+                    return (
+                      <div key={l.key} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 88px 44px', gap: 8, alignItems: 'center' }}>
+                        <input type="date" value={l.data} disabled={registrandoMotivo}
+                          onChange={(e) => { const data = e.target.value; setLinhasEntrada((prev) => prev.map((x) => x.key === l.key ? { ...x, data } : x)) }}
+                          style={{ ...campoStyle, ...(vencido ? { border: '1px solid rgba(239,68,68,0.5)', color: '#EF4444' } : {}) }} />
+                        <input type="number" min="1" step="1" inputMode="numeric" value={l.qtd} disabled={registrandoMotivo}
+                          onChange={(e) => { const qtd = e.target.value; setLinhasEntrada((prev) => prev.map((x) => x.key === l.key ? { ...x, qtd } : x)) }}
+                          style={{ ...campoStyle, textAlign: 'center', fontWeight: 700 }} />
+                        <button type="button" aria-label="Remover lote" disabled={registrandoMotivo || linhasEntrada.length === 1}
+                          onClick={() => setLinhasEntrada((prev) => prev.filter((x) => x.key !== l.key))}
+                          style={{ height: 46, borderRadius: 12, border: `1px solid ${D.border}`, background: 'none', color: D.text2, fontSize: 16, cursor: 'pointer', opacity: linhasEntrada.length === 1 ? 0.3 : 1 }}>
+                          ✕
+                        </button>
+                        {vencido && (
+                          <p style={{ gridColumn: '1 / -1', color: '#EF4444', fontSize: 11, fontWeight: 600, margin: '-2px 0 0 2px' }}>Data já vencida</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                  <button type="button" onClick={adicionarLinha} disabled={registrandoMotivo}
+                    style={{ padding: '12px 16px', borderRadius: 16, border: '1px dashed #6366F1', background: 'rgba(99,102,241,0.08)', color: '#6366F1', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                    + adicionar lote
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {vals.map((v) => {
+                    const dias = diasAteVencer(v.data_validade)
+                    const vencido = dias < 0
+                    const cor = vencido ? '#EF4444' : dias <= 7 ? '#F97316' : D.text
+                    return (
+                      <div key={v.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 88px', gap: 10, alignItems: 'center', padding: '10px 12px', borderRadius: 16, border: `1px solid ${vencido ? 'rgba(239,68,68,0.4)' : D.border}`, background: vencido ? 'rgba(239,68,68,0.08)' : D.input }}>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ color: cor, fontSize: 14, fontWeight: 700, margin: 0 }}>{formatarData(v.data_validade)}{vencido ? ' · Vencido' : ''}</p>
+                          <p style={{ color: D.text2, fontSize: 12, margin: '2px 0 0' }}>Lote tem {v.quantidade} {unidade}</p>
+                        </div>
+                        <input type="number" min="0" max={v.quantidade} step="1" inputMode="numeric" placeholder="0" disabled={registrandoMotivo}
+                          value={qtdSaidaPorLote[v.id] ?? ''}
+                          onChange={(e) => {
+                            const raw = e.target.value
+                            // Não deixa passar do que o lote tem.
+                            const val = raw === '' ? '' : String(Math.min(parseQtd(raw), v.quantidade))
+                            setQtdSaidaPorLote((prev) => ({ ...prev, [v.id]: val }))
+                          }}
+                          style={{ ...campoStyle, background: D.card, textAlign: 'center', fontWeight: 700 }} />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Contador + motivo do bloqueio */}
+              <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 12, background: contadorOk ? 'rgba(16,185,129,0.1)' : 'rgba(249,115,22,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: contadorOk ? '#10B981' : '#F97316', fontSize: 14, fontWeight: 700 }}>
+                  Lotes: {soma} de {alvo} {unidade}
+                </span>
+                {contadorOk && <span style={{ color: '#10B981', fontSize: 14, fontWeight: 800 }}>✓</span>}
+              </div>
+              {aviso && <p style={{ color: '#F59E0B', fontSize: 12, fontWeight: 600, marginTop: 8 }}>⚠️ {aviso}</p>}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, marginTop: 16 }}>
+                <button type="button" onClick={fecharModalLote} disabled={registrandoMotivo}
+                  style={{ padding: '14px', borderRadius: 16, border: `1px solid ${D.border}`, background: 'none', color: D.text2, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                  Voltar
+                </button>
+                <button type="button" onClick={() => finalizarMotivo(tipo, lotesAdd, lotesRemover)} disabled={!podeSalvar}
+                  style={{ padding: '14px', borderRadius: 16, background: '#6366F1', color: '#fff', border: 'none', fontSize: 15, fontWeight: 700, cursor: podeSalvar ? 'pointer' : 'not-allowed', opacity: podeSalvar ? 1 : 0.5 }}>
+                  {registrandoMotivo ? 'Salvando...' : 'Salvar'}
                 </button>
               </div>
+              {motivoBloqueio && (
+                <p style={{ color: '#EF4444', fontSize: 12, fontWeight: 600, textAlign: 'center', marginTop: 8 }}>{motivoBloqueio}</p>
+              )}
               {feedback && (
                 <p style={{ fontSize: 13, textAlign: 'center', fontWeight: 600, marginTop: 12, color: feedback.ok ? '#10B981' : '#EF4444' }}>
                   {feedback.msg}
                 </p>
               )}
-              {registrandoMotivo && <p style={{ color: D.text2, fontSize: 12, textAlign: 'center', marginTop: 12 }}>Registrando...</p>}
             </div>
           </div>
         )
