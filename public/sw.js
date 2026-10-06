@@ -67,6 +67,8 @@ self.addEventListener('notificationclick', (event) => {
 // ── Fetch: network-first para API, cache-first para assets estáticos ─────────
 self.addEventListener('fetch', (event) => {
   const { request } = event
+  // Ignora esquemas que o Cache API não aceita (ex.: chrome-extension://)
+  if (!request.url.startsWith('http')) return
   const url = new URL(request.url)
 
   // Ignora requisições não-GET e chamadas de API

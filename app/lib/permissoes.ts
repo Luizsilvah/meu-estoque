@@ -17,6 +17,8 @@ export type Funcao = {
   emoji: string
   descricao: string
   href: string
+  /** Página travada no proxy por esta função, quando difere do href (ex.: href com ?aba=). */
+  rota?: string
   grupo: GrupoFuncao
   /** Valor inicial ao criar um funcionário novo. */
   padrao: boolean
@@ -45,13 +47,17 @@ export const FUNCOES: Funcao[] = [
   { id: 'transferencia', href: '/transferencia', emoji: '↔️', nome: 'Transferência', grupo: 'Estoque', padrao: true,  descricao: 'Mover entre principal e cozinha' },
   { id: 'nota',           href: '/nota',           emoji: '📷', nome: 'Lançar nota',    grupo: 'Compras', padrao: false, descricao: 'Dar entrada pela nota fiscal' },
   { id: 'equipe', href: '/admin/usuarios', emoji: '👥', nome: 'Equipe',  grupo: 'Equipe e chat', padrao: false, somenteAdmin: true, descricao: 'Usuários e permissões' },
-  { id: 'codigos',       href: '/codigos',       emoji: '🔢', nome: 'Códigos',       grupo: 'Estoque', padrao: false, descricao: 'Gerenciar códigos de barras' },
+  { id: 'codigos',       href: '/codigos',       emoji: '🔢', nome: 'Etiquetas',       grupo: 'Estoque', padrao: false, descricao: 'Gerenciar códigos de barras' },
+  // Relatório e Gráficos são abas da mesma página /relatorio: cada aba aparece
+  // só para quem tem a permissão dela, e a página abre para quem tiver qualquer uma.
   { id: 'relatorio', href: '/relatorio', emoji: '📊', nome: 'Relatório', grupo: 'Relatórios', padrao: false, descricao: 'Relatório do estoque' },
-  { id: 'graficos',  href: '/graficos',  emoji: '📈', nome: 'Gráficos',  grupo: 'Relatórios', padrao: false, descricao: 'Gráficos de consumo' },
+  { id: 'graficos',  href: '/relatorio?aba=graficos', rota: '/relatorio', emoji: '📈', nome: 'Gráficos', grupo: 'Relatórios', padrao: false, descricao: 'Gráficos de consumo' },
   { id: 'conferencia',   href: '/conferencia',   emoji: '✅', nome: 'Conferência',   grupo: 'Estoque', padrao: false, descricao: 'Contar e ajustar o estoque' },
   { id: 'scanner',       href: '/scanner',       emoji: '🔍', nome: 'Scanner',       grupo: 'Estoque', padrao: true,  descricao: 'Buscar produto pelo código de barras' },
   { id: 'compras-quinta', href: '/compras-quinta', emoji: '🗓️', nome: 'Compras quinta', grupo: 'Compras', padrao: true,  herdaDe: 'estoque', descricao: 'Lista de compras da quinta-feira' },
-  { id: 'validades-divergentes', href: '/validades-divergentes', emoji: '📅', nome: 'Validades divergentes', grupo: 'Validades', padrao: false, herdaDe: 'conferencia', descricao: 'Corrigir lotes que não batem com o estoque' },
+  // id antigo mantido para não perder as permissões já salvas; a página agora é
+  // /validades (abas Vencendo, Divergentes e Sem validade). /validades-divergentes redireciona.
+  { id: 'validades-divergentes', href: '/validades', emoji: '📅', nome: 'Validades', grupo: 'Validades', padrao: false, herdaDe: 'conferencia', descricao: 'Vencendo, divergentes e sem validade' },
   // Sem botão no menu: só interruptor na tela de usuários + trava no proxy.
   { id: 'cadastrar', href: '/cadastro', emoji: '➕', nome: 'Cadastro', grupo: 'Estoque', padrao: false, herdaDe: 'estoque', foraDoMenu: true, descricao: 'Cadastrar produtos e fornecedores' },
 ]
@@ -85,7 +91,14 @@ export function permissoesPadrao(): Permissoes {
   return Object.fromEntries(FUNCOES_CONFIGURAVEIS.map((f) => [f.id, f.padrao]))
 }
 
-/** Função cuja página é o caminho informado (ou um subcaminho dele). */
-export function funcaoDaRota(pathname: string): Funcao | undefined {
-  return FUNCOES.find((f) => pathname === f.href || pathname.startsWith(f.href + '/'))
+/**
+ * Funções cuja página é o caminho informado (ou um subcaminho dele). Pode vir
+ * mais de uma quando a página é compartilhada (ex.: /relatorio = Relatório +
+ * Gráficos); o acesso é liberado se o usuário tiver qualquer uma delas.
+ */
+export function funcoesDaRota(pathname: string): Funcao[] {
+  return FUNCOES.filter((f) => {
+    const rota = f.rota ?? f.href
+    return pathname === rota || pathname.startsWith(rota + '/')
+  })
 }

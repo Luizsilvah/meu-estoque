@@ -68,11 +68,12 @@ function Icone({ nome, size = 22, cor = 'currentColor', traco = 2 }: { nome: str
   )
 }
 
-// Visual de cada função (ícone, cor, nome curto). As funções em si vêm da
-// lista única em app/lib/permissoes.ts; id sem entrada aqui usa o padrão.
-const VISUAL: Record<string, { icone: string; cor: string; curto?: string }> = {
+// Visual de cada função (ícone, cor, nome no botão, nome curto). As funções em si
+// vêm da lista única em app/lib/permissoes.ts; id sem entrada aqui usa o padrão.
+// curto = botões pequenos (grade "Mais") e botões grandes de ação rápida.
+const VISUAL: Record<string, { icone: string; cor: string; nome?: string; curto?: string }> = {
   estoque:                 { icone: 'box',       cor: COR.roxo },
-  movimentacao:            { icone: 'upDown',    cor: COR.azul },
+  movimentacao:            { icone: 'upDown',    cor: COR.azul, curto: 'Movimentar' },
   conferencia:             { icone: 'check',     cor: COR.verde },
   historico:               { icone: 'clock',     cor: COR.amarelo },
   chat:                    { icone: 'chat',      cor: COR.rosa, curto: 'Chat' },
@@ -81,8 +82,9 @@ const VISUAL: Record<string, { icone: string; cor: string; curto?: string }> = {
   nota:                    { icone: 'file',      cor: COR.roxo, curto: 'Nota fiscal' },
   equipe:                  { icone: 'users',     cor: COR.indigo },
   codigos:                 { icone: 'barcode',   cor: COR.indigo },
-  relatorio:               { icone: 'lineChart', cor: COR.teal },
-  graficos:                { icone: 'barChart',  cor: COR.teal },
+  // Relatório e Gráficos são abas da mesma página: um botão só, "Relatórios".
+  relatorio:               { icone: 'lineChart', cor: COR.teal, nome: 'Relatórios' },
+  graficos:                { icone: 'lineChart', cor: COR.teal, nome: 'Relatórios' },
   scanner:                 { icone: 'scan',      cor: COR.roxo },
   'compras-quinta':        { icone: 'cart',      cor: COR.vermelho, curto: 'Compras' },
   'validades-divergentes': { icone: 'timer',     cor: COR.laranja, curto: 'Validades' },
@@ -90,7 +92,8 @@ const VISUAL: Record<string, { icone: string; cor: string; curto?: string }> = {
 }
 function visual(f: Funcao) {
   const v = VISUAL[f.id]
-  return { icone: v?.icone ?? 'box', cor: v?.cor ?? COR.indigo, curto: v?.curto ?? f.nome }
+  const nome = v?.nome ?? f.nome
+  return { icone: v?.icone ?? 'box', cor: v?.cor ?? COR.indigo, nome, curto: v?.curto ?? nome }
 }
 
 // Botões grandes de ação rápida (admin / quem tem mais de 3 funções), nesta ordem.
@@ -196,7 +199,9 @@ export default function Home() {
     const vis: Record<string, boolean> = Object.fromEntries(
       FUNCOES.map((f) => [f.id, isAdmin != null && podeAcessar(f, isAdmin ? 'admin' : 'funcionario', permissoes)]),
     )
-    return { vis, liberadas: FUNCOES.filter((f) => !f.foraDoMenu && vis[f.id]) }
+    // Quem tem Relatório e Gráficos vê um botão só (Relatório); a página mostra as duas abas.
+    const liberadas = FUNCOES.filter((f) => !f.foraDoMenu && vis[f.id] && !(f.id === 'graficos' && vis['relatorio']))
+    return { vis, liberadas }
   }, [isAdmin, permissoes])
 
   // Funcionário com até 3 funções: lista simples, um botão grande por linha.
@@ -210,8 +215,9 @@ export default function Home() {
   const totalValidades = (dados?.vencendo7d ?? 0) + (dados?.validadesDivergentes ?? 0)
   const mostraCompra = vis['compras-quinta'] && totalCompra > 0
   const mostraValidades = (vis['validades-divergentes'] || vis['estoque']) && totalValidades > 0
-  // Quem só tem 'estoque' não abre /validades-divergentes (trava do proxy): vai para o filtro do estoque.
-  const hrefValidades = vis['validades-divergentes'] ? '/validades-divergentes' : '/estoque?filtro=vencendo'
+  // Quem só tem 'estoque' não abre /validades (trava do proxy): vai para o filtro do estoque.
+  const hrefValidades = !vis['validades-divergentes'] ? '/estoque?filtro=vencendo'
+    : (dados?.vencendo7d ?? 0) > 0 ? '/validades?aba=vencendo' : '/validades?aba=divergentes'
 
   const inicial = (nomeUsuario.trim()[0] ?? '').toUpperCase()
 
@@ -297,7 +303,7 @@ export default function Home() {
                       <Icone nome={v.icone} size={26} cor="#fff" />
                     </span>
                     <span style={{ minWidth: 0 }}>
-                      <span style={{ display: 'block', color: '#fff', fontSize: 19, fontWeight: 800 }}>{f.nome}</span>
+                      <span style={{ display: 'block', color: '#fff', fontSize: 19, fontWeight: 800 }}>{v.nome}</span>
                       <span style={{ display: 'block', color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 }}>{f.descricao}</span>
                     </span>
                   </Link>
@@ -326,8 +332,8 @@ export default function Home() {
                   <span style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Icone nome={v.icone} size={22} cor="#fff" />
                   </span>
-                  <span style={{ color: '#fff', fontSize: 13, fontWeight: 800, textAlign: 'center', lineHeight: 1.2, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {f.nome}
+                  <span style={{ color: '#fff', fontSize: 13, fontWeight: 800, textAlign: 'center', lineHeight: 1.2, maxWidth: '100%', overflowWrap: 'anywhere' }}>
+                    {v.curto}
                   </span>
                 </Link>
               )
@@ -343,7 +349,7 @@ export default function Home() {
               {mais.map((f) => {
                 const v = visual(f)
                 return (
-                  <Link key={f.id} href={f.href} title={f.nome} style={{
+                  <Link key={f.id} href={f.href} title={v.nome} style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
                     padding: '14px 4px', borderRadius: 16, background: D.card, border: `1px solid ${D.border}`,
                     textDecoration: 'none', minHeight: 84, boxSizing: 'border-box',
@@ -444,7 +450,7 @@ export default function Home() {
                     return (
                       <Link key={f.id} href={f.href} onClick={() => setMenuAberto(false)} style={linhaMenu}>
                         <Icone nome={v.icone} size={20} cor={v.cor} />
-                        <span style={{ flex: 1, color: D.text, fontSize: 14, fontWeight: 600 }}>{f.nome}</span>
+                        <span style={{ flex: 1, color: D.text, fontSize: 14, fontWeight: 600 }}>{v.nome}</span>
                         <Icone nome="chevron" size={16} cor="var(--muted)" />
                       </Link>
                     )

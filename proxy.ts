@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createSupabaseAdmin } from './app/lib/supabase-admin'
-import { funcaoDaRota, podeAcessar } from './app/lib/permissoes'
+import { funcoesDaRota, podeAcessar } from './app/lib/permissoes'
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -82,14 +82,16 @@ export async function proxy(request: NextRequest) {
   // app/lib/permissoes.ts). Checagem otimista: esconde a página, mas as rotas
   // de API continuam conferindo só o login. perfis não tem policy para o
   // usuário logado (RLS), por isso a leitura usa a service role.
-  const funcao = user && !pathname.startsWith('/api/') ? funcaoDaRota(pathname) : undefined
-  if (user && funcao) {
+  // Página compartilhada (ex.: /relatorio = Relatório + Gráficos): basta uma das
+  // funções. /validades usa a chave 'validades-divergentes' (ver permissoes.ts).
+  const funcoes = user && !pathname.startsWith('/api/') ? funcoesDaRota(pathname) : []
+  if (user && funcoes.length > 0) {
     const { data: perfil } = await createSupabaseAdmin()
       .from('perfis')
       .select('perfil, permissoes')
       .eq('id', user.id)
       .maybeSingle()
-    if (!podeAcessar(funcao, perfil?.perfil, perfil?.permissoes)) {
+    if (!funcoes.some((f) => podeAcessar(f, perfil?.perfil, perfil?.permissoes))) {
       return redirecionar(new URL('/', request.url))
     }
   }

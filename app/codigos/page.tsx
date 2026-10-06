@@ -144,7 +144,7 @@ export default function CodigosBarras() {
       {/* Header — oculto na impressão */}
       <div style={{ background: '#1A3C5E' }} className="px-5 pt-10 pb-6 print:hidden">
         <Link href="/" className="text-blue-300 text-xs mb-3 block">← Voltar</Link>
-        <h1 className="text-white text-2xl font-bold tracking-tight">Códigos de barras</h1>
+        <h1 className="text-white text-2xl font-bold tracking-tight">Etiquetas</h1>
         <p className="text-blue-200 text-sm mt-1">
           {loading ? 'Carregando...' : `${filtrados.length} produto${filtrados.length !== 1 ? 's' : ''}`}
         </p>
@@ -152,7 +152,7 @@ export default function CodigosBarras() {
 
       {/* Título só na impressão */}
       <div className="hidden print:block px-6 pt-6 pb-2">
-        <h1 className="text-xl font-bold text-gray-900">Códigos de barras — Estoque</h1>
+        <h1 className="text-xl font-bold text-gray-900">Etiquetas — Estoque</h1>
         <p className="text-xs text-gray-500 mt-1">
           {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
         </p>
