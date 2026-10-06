@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { subscribePush } from './components/RegisterSW'
 import ThemeToggle from './components/ThemeToggle'
 import BarcodeCameraButton from './components/BarcodeCameraButton'
+import { FUNCOES, podeAcessar } from './lib/permissoes'
 
 const C = {
   bg: 'var(--bg)',
@@ -86,23 +87,8 @@ type BtnConfig = {
   shadow?: string
 }
 
-const allBotoes: BtnConfig[] = [
-  { id: 'estoque',      href: '/estoque',       emoji: '📦', label: 'Estoque',      gradient: 'linear-gradient(145deg,#7C3AED,#4C1D95)', shadow: '0 4px 20px rgba(124,58,237,0.25)' },
-  { id: 'movimentacao', href: '/movimentacao',   emoji: '🔄', label: 'Movimentação', gradient: 'linear-gradient(145deg,#2563EB,#1E40AF)', shadow: '0 4px 20px rgba(37,99,235,0.25)' },
-  { id: 'historico',    href: '/historico',      emoji: '📋', label: 'Histórico' },
-  { id: 'chat',         href: '/chat',           emoji: '💬', label: 'Chat IA' },
-  { id: 'checklist',    href: '/checklist',      emoji: '🛒', label: 'Checklist' },
-  { id: 'transferencia',href: '/transferencia',  emoji: '↔️', label: 'Transferência' },
-  { id: 'nota',         href: '/nota',           emoji: '📷', label: 'Lançar nota' },
-  { id: 'equipe',       href: '/admin/usuarios', emoji: '👥', label: 'Equipe' },
-  { id: 'codigos',      href: '/codigos',        emoji: '🔢', label: 'Códigos' },
-  { id: 'relatorio',    href: '/relatorio',      emoji: '📊', label: 'Relatório' },
-  { id: 'graficos',     href: '/graficos',       emoji: '📈', label: 'Gráficos' },
-  { id: 'conferencia',  href: '/conferencia',    emoji: '✅', label: 'Conferência' },
-  { id: 'scanner',      href: '/scanner',        emoji: '🔍', label: 'Scanner' },
-  { id: 'compras-quinta', href: '/compras-quinta', emoji: '🗓️', label: 'Compras quinta' },
-  { id: 'validades-divergentes', href: '/validades-divergentes', emoji: '📅', label: 'Validades divergentes' },
-]
+// Botões vêm da lista única de funções (app/lib/permissoes.ts) — botão novo entra lá.
+const allBotoes: BtnConfig[] = FUNCOES.filter((f) => !f.foraDoMenu).map((f) => ({ id: f.id, href: f.href, emoji: f.emoji, label: f.nome, gradient: f.gradient, shadow: f.shadow }))
 
 const DEFAULT_CONFIG = {
   frente: ['estoque', 'movimentacao'],
@@ -214,23 +200,11 @@ export default function Home() {
 
   // Listas filtradas por permissão e ordenadas pelo config salvo
   const { botoesFrente, botoesPainel, vis } = useMemo(() => {
-    const vis: Record<string, boolean> = {
-      estoque:       isAdmin != null && (isAdmin || permissoes['estoque'] === true),
-      movimentacao:  isAdmin != null && (isAdmin || permissoes['movimentacao'] === true),
-      historico:     isAdmin != null && (isAdmin || permissoes['historico'] === true),
-      chat:          isAdmin != null && (isAdmin || permissoes['chat'] === true),
-      checklist:     isAdmin != null && (isAdmin || permissoes['checklist'] === true),
-      transferencia: isAdmin != null && (isAdmin || permissoes['transferencia'] === true),
-      nota:          isAdmin != null && (isAdmin || permissoes['nota'] === true),
-      equipe:        isAdmin === true,
-      codigos:       isAdmin != null && (isAdmin || permissoes['codigos'] === true),
-      relatorio:     isAdmin != null && (isAdmin || permissoes['relatorio'] === true),
-      graficos:      isAdmin != null && (isAdmin || permissoes['graficos'] === true),
-      conferencia:   isAdmin != null && (isAdmin || permissoes['conferencia'] === true),
-      scanner:       isAdmin != null && (isAdmin || permissoes['scanner'] === true),
-      // Correção de lotes de validade — mesma permissão da Conferência
-      'validades-divergentes': isAdmin != null && (isAdmin || permissoes['conferencia'] === true),
-    }
+    // Cada botão com a sua própria permissão; mesma regra da trava das páginas (proxy.ts).
+    // isAdmin null = /api/auth/me ainda não respondeu → nada visível.
+    const vis: Record<string, boolean> = Object.fromEntries(
+      FUNCOES.map((f) => [f.id, isAdmin != null && podeAcessar(f, isAdmin ? 'admin' : 'funcionario', permissoes)]),
+    )
 
     // Funcionário: todos os botões permitidos vão direto para frente (sem painel, sem drag)
     if (perfil === 'funcionario') {

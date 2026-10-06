@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createSupabaseAdmin } from './app/lib/supabase-admin'
+import { funcaoDaRota, podeAcessar } from './app/lib/permissoes'
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -74,6 +76,22 @@ export async function proxy(request: NextRequest) {
   // Já logado acessando rota pública → home
   if (user && isPublica) {
     return redirecionar(new URL('/', request.url))
+  }
+
+  // Página de uma função do menu sem permissão → home (mesma regra do menu, ver
+  // app/lib/permissoes.ts). Checagem otimista: esconde a página, mas as rotas
+  // de API continuam conferindo só o login. perfis não tem policy para o
+  // usuário logado (RLS), por isso a leitura usa a service role.
+  const funcao = user && !pathname.startsWith('/api/') ? funcaoDaRota(pathname) : undefined
+  if (user && funcao) {
+    const { data: perfil } = await createSupabaseAdmin()
+      .from('perfis')
+      .select('perfil, permissoes')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (!podeAcessar(funcao, perfil?.perfil, perfil?.permissoes)) {
+      return redirecionar(new URL('/', request.url))
+    }
   }
 
   // IMPORTANTE: retorna supabaseResponse — nunca um NextResponse.next() novo,

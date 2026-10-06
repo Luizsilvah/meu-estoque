@@ -4,46 +4,77 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import { D } from '@/app/lib/theme'
+import { FUNCOES, FUNCOES_CONFIGURAVEIS, GRUPOS, Permissoes, permissoesEfetivas, permissoesPadrao } from '@/app/lib/permissoes'
 
-type Permissoes = {
-  dashboard: boolean; estoque: boolean; movimentacao: boolean; historico: boolean
-  cadastrar: boolean; scanner: boolean; chat: boolean
-  conferencia: boolean; transferencia: boolean; checklist: boolean
-  relatorio: boolean; graficos: boolean; codigos: boolean; nota: boolean
-}
-type Usuario = { id: string; nome: string; perfil: 'admin' | 'funcionario'; permissoes: Permissoes; criado_em: string }
+type Usuario = { id: string; nome: string; perfil: 'admin' | 'funcionario'; permissoes: Permissoes | null; criado_em: string }
 
-const PERMISSOES_LABELS: { key: keyof Permissoes; label: string }[] = [
-  { key: 'dashboard',    label: 'Dashboard' },
-  { key: 'estoque',      label: 'Estoque' },
-  { key: 'movimentacao', label: 'Movimentação' },
-  { key: 'historico',    label: 'Histórico' },
-  { key: 'cadastrar',    label: 'Cadastrar' },
-  { key: 'scanner',      label: 'Scanner' },
-  { key: 'chat',         label: 'Chat' },
-  { key: 'conferencia',  label: 'Conferência' },
-  { key: 'transferencia',label: 'Transferência' },
-  { key: 'checklist',    label: 'Checklist' },
-  { key: 'relatorio',    label: 'Relatório' },
-  { key: 'graficos',     label: 'Gráficos' },
-  { key: 'codigos',      label: 'Códigos de barras' },
-  { key: 'nota',         label: 'Lançar nota' },
-]
-
-const PERMISSOES_DEFAULT: Permissoes = {
-  dashboard: true, estoque: true, movimentacao: true, historico: true,
-  cadastrar: false, scanner: true, chat: true,
-  conferencia: false, transferencia: true, checklist: true,
-  relatorio: false, graficos: false, codigos: false, nota: false,
-}
-
-function Toggle({ ativo, onClick }: { ativo: boolean; onClick: () => void }) {
+function Toggle({ ativo }: { ativo: boolean }) {
   return (
-    <div onClick={onClick} style={{ width: 44, height: 24, borderRadius: 12, background: ativo ? '#6366F1' : D.border, position: 'relative', cursor: 'pointer', flexShrink: 0 }}>
+    <div aria-hidden style={{ width: 44, height: 24, borderRadius: 12, background: ativo ? '#6366F1' : D.border, position: 'relative', cursor: 'pointer', flexShrink: 0 }}>
       <div style={{ position: 'absolute', top: 2, width: 20, height: 20, background: '#fff', borderRadius: '50%', boxShadow: '0 1px 4px rgba(0,0,0,0.4)', transition: 'transform 0.2s', transform: ativo ? 'translateX(22px)' : 'translateX(2px)' }} />
     </div>
   )
 }
+
+// Interruptores por função, agrupados, com Marcar/Desmarcar todas. A linha
+// inteira é o botão (área de toque grande no celular).
+function PainelPermissoes({ valor, onChange, disabled }: { valor: Permissoes; onChange: (p: Permissoes) => void; disabled?: boolean }) {
+  function todas(ligar: boolean) {
+    onChange({ ...valor, ...Object.fromEntries(FUNCOES_CONFIGURAVEIS.map((f) => [f.id, ligar])) })
+  }
+  const ligadas = FUNCOES_CONFIGURAVEIS.filter((f) => valor[f.id]).length
+  const btnMini: React.CSSProperties = { flex: 1, padding: '8px 10px', borderRadius: 10, border: `1px solid ${D.border}`, background: D.input, color: D.text2, fontSize: 12, fontWeight: 600, cursor: 'pointer' }
+  const linha: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: D.input, border: 'none', borderRadius: 10, padding: '10px 14px' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, color: D.muted, flexShrink: 0 }}>{ligadas} de {FUNCOES_CONFIGURAVEIS.length}</span>
+        <button type="button" disabled={disabled} onClick={() => todas(true)} style={btnMini}>Marcar todas</button>
+        <button type="button" disabled={disabled} onClick={() => todas(false)} style={btnMini}>Desmarcar todas</button>
+      </div>
+      {GRUPOS.map((grupo) => (
+        <div key={grupo}>
+          <p style={{ color: D.muted, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 6px 2px' }}>{grupo}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {FUNCOES.filter((f) => f.grupo === grupo).map((f) => {
+              const texto = (
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 14, color: D.text2 }}>{f.emoji} {f.nome}</span>
+                  <span style={{ display: 'block', fontSize: 11, color: D.muted, marginTop: 1 }}>{f.descricao}</span>
+                </span>
+              )
+              return f.somenteAdmin ? (
+                <div key={f.id} style={{ ...linha, opacity: 0.6 }}>
+                  {texto}
+                  <span style={{ fontSize: 11, fontWeight: 700, color: D.muted, flexShrink: 0 }}>Só admin</span>
+                </div>
+              ) : (
+                <button key={f.id} type="button" role="switch" aria-checked={!!valor[f.id]} disabled={disabled}
+                  onClick={() => onChange({ ...valor, [f.id]: !valor[f.id] })}
+                  style={{ ...linha, cursor: 'pointer' }}>
+                  {texto}
+                  <Toggle ativo={!!valor[f.id]} />
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function resumoPermissoes(u: Usuario): string {
+  if (u.perfil === 'admin') return 'acesso a tudo'
+  const efetivas = permissoesEfetivas(u.permissoes)
+  const nomes = FUNCOES_CONFIGURAVEIS.filter((f) => efetivas[f.id]).map((f) => f.nome)
+  return nomes.length ? nomes.join(', ') : 'nenhuma função'
+}
+
+const AVISO_ADMIN = (
+  <p style={{ fontSize: 13, color: D.text2, background: D.input, borderRadius: 10, padding: '10px 14px' }}>👑 Admin vê todas as funções.</p>
+)
 
 const inputStyle: React.CSSProperties = { width: '100%', background: D.input, border: `1px solid ${D.border}`, borderRadius: 12, padding: '10px 14px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box' }
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: D.text2, marginBottom: 6 }
@@ -56,14 +87,15 @@ export default function AdminUsuarios() {
   const [senhaApagar, setSenhaApagar] = useState('')
   const [apagando, setApagando] = useState(false)
   const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [editandoPerfil, setEditandoPerfil] = useState<'admin' | 'funcionario'>('funcionario')
   const [editandoNome, setEditandoNome] = useState('')
-  const [editandoPermissoes, setEditandoPermissoes] = useState<Permissoes>(PERMISSOES_DEFAULT)
+  const [editandoPermissoes, setEditandoPermissoes] = useState<Permissoes>({})
   const [salvandoPermissoes, setSalvandoPermissoes] = useState(false)
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [perfil, setPerfil] = useState<'admin' | 'funcionario'>('funcionario')
-  const [permissoes, setPermissoes] = useState<Permissoes>(PERMISSOES_DEFAULT)
+  const [permissoes, setPermissoes] = useState<Permissoes>(permissoesPadrao)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
@@ -84,14 +116,17 @@ export default function AdminUsuarios() {
 
   async function abrirEdicao(u: Usuario) {
     const res = await fetch('/api/admin/usuarios')
-    let permissoesFrescas: Permissoes = { ...PERMISSOES_DEFAULT, ...u.permissoes }
+    // Valores efetivos (com a herança das chaves novas) = o que o usuário vê hoje no menu.
+    // Chaves que não são funções (dashboard, cadastrar) vêm junto e são regravadas como estão.
+    let permissoesFrescas: Permissoes = permissoesEfetivas(u.permissoes)
+    let perfilFresco = u.perfil
     let nomeFresco = u.nome
     if (res.ok) {
       const lista: Usuario[] = await res.json()
       const fresco = lista.find((x) => x.id === u.id)
-      if (fresco) { permissoesFrescas = { ...PERMISSOES_DEFAULT, ...fresco.permissoes }; nomeFresco = fresco.nome; setUsuarios(lista) }
+      if (fresco) { permissoesFrescas = permissoesEfetivas(fresco.permissoes); perfilFresco = fresco.perfil; nomeFresco = fresco.nome; setUsuarios(lista) }
     }
-    setEditandoId(u.id); setEditandoNome(nomeFresco); setEditandoPermissoes(permissoesFrescas)
+    setEditandoId(u.id); setEditandoNome(nomeFresco); setEditandoPerfil(perfilFresco); setEditandoPermissoes(permissoesFrescas)
     setConfirmarApagar(null); setSenhaApagar('')
   }
 
@@ -112,7 +147,7 @@ export default function AdminUsuarios() {
       const json = await res.json()
       if (!res.ok) { setErro(json.erro ?? 'Erro ao criar usuário'); return }
       setSucesso(`Usuário "${nome}" criado com sucesso!`)
-      setNome(''); setEmail(''); setSenha(''); setPerfil('funcionario'); setPermissoes(PERMISSOES_DEFAULT)
+      setNome(''); setEmail(''); setSenha(''); setPerfil('funcionario'); setPermissoes(permissoesPadrao())
       const lista = await fetch('/api/admin/usuarios').then(r => r.json())
       if (Array.isArray(lista)) setUsuarios(lista)
     } finally { setSalvando(false) }
@@ -161,17 +196,12 @@ export default function AdminUsuarios() {
               </div>
             </div>
 
-            <div>
-              <label style={labelStyle}>Permissões</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {PERMISSOES_LABELS.map(({ key, label }) => (
-                  <label key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: D.input, borderRadius: 10, padding: '10px 14px', cursor: 'pointer' }}>
-                    <span style={{ fontSize: 14, color: D.text2 }}>{label}</span>
-                    <Toggle ativo={permissoes[key]} onClick={() => setPermissoes(p => ({ ...p, [key]: !p[key] }))} />
-                  </label>
-                ))}
+            {perfil === 'admin' ? AVISO_ADMIN : (
+              <div>
+                <label style={labelStyle}>Funções que pode ver</label>
+                <PainelPermissoes valor={permissoes} onChange={setPermissoes} disabled={salvando} />
               </div>
-            </div>
+            )}
 
             {erro && <p style={{ background: 'rgba(239,68,68,0.1)', color: '#F87171', fontSize: 13, padding: '8px 12px', borderRadius: 10, textAlign: 'center' }}>{erro}</p>}
             {sucesso && <p style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981', fontSize: 13, padding: '8px 12px', borderRadius: 10, textAlign: 'center' }}>{sucesso}</p>}
@@ -206,13 +236,10 @@ export default function AdminUsuarios() {
                       <label style={labelStyle}>Nome</label>
                       <input style={inputStyle} value={editandoNome} onChange={e => setEditandoNome(e.target.value)} />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-                      {PERMISSOES_LABELS.map(({ key, label }) => (
-                        <label key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: D.input, borderRadius: 10, padding: '10px 14px', cursor: 'pointer' }}>
-                          <span style={{ fontSize: 14, color: D.text2 }}>{label}</span>
-                          <Toggle ativo={editandoPermissoes[key]} onClick={() => setEditandoPermissoes(p => ({ ...p, [key]: !p[key] }))} />
-                        </label>
-                      ))}
+                    <div style={{ marginBottom: 12 }}>
+                      {editandoPerfil === 'admin' ? AVISO_ADMIN : (
+                        <PainelPermissoes valor={editandoPermissoes} onChange={setEditandoPermissoes} disabled={salvandoPermissoes} />
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => setEditandoId(null)} style={btnSecondary}>Cancelar</button>
@@ -225,7 +252,7 @@ export default function AdminUsuarios() {
                     <div>
                       <p style={{ color: D.text, fontSize: 14, fontWeight: 700 }}>{u.nome}</p>
                       <p style={{ color: D.muted, fontSize: 12, marginTop: 2 }}>
-                        {u.perfil === 'admin' ? '👑 Admin' : '👤 Funcionário'} · {Object.entries(u.permissoes ?? {}).filter(([, v]) => v).map(([k]) => k).join(', ')}
+                        {u.perfil === 'admin' ? '👑 Admin' : '👤 Funcionário'} · {resumoPermissoes(u)}
                       </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
