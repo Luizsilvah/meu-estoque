@@ -32,6 +32,7 @@ type Dashboard = {
   valorEstoque: number
   criticos: number
   comprarQuinta: number
+  validadesDivergentes: number | null
 }
 
 type ItemPrevisao = {
@@ -100,11 +101,12 @@ const allBotoes: BtnConfig[] = [
   { id: 'conferencia',  href: '/conferencia',    emoji: '✅', label: 'Conferência' },
   { id: 'scanner',      href: '/scanner',        emoji: '🔍', label: 'Scanner' },
   { id: 'compras-quinta', href: '/compras-quinta', emoji: '🗓️', label: 'Compras quinta' },
+  { id: 'validades-divergentes', href: '/validades-divergentes', emoji: '📅', label: 'Validades divergentes' },
 ]
 
 const DEFAULT_CONFIG = {
   frente: ['estoque', 'movimentacao'],
-  painel: ['historico', 'chat', 'checklist', 'compras-quinta', 'transferencia', 'nota', 'equipe', 'codigos', 'relatorio', 'graficos', 'conferencia', 'scanner'],
+  painel: ['historico', 'chat', 'checklist', 'compras-quinta', 'transferencia', 'nota', 'equipe', 'codigos', 'relatorio', 'graficos', 'conferencia', 'scanner', 'validades-divergentes'],
 }
 
 const FUNCIONARIO_CONFIG = {
@@ -226,6 +228,8 @@ export default function Home() {
       graficos:      isAdmin != null && (isAdmin || permissoes['graficos'] === true),
       conferencia:   isAdmin != null && (isAdmin || permissoes['conferencia'] === true),
       scanner:       isAdmin != null && (isAdmin || permissoes['scanner'] === true),
+      // Correção de lotes de validade — mesma permissão da Conferência
+      'validades-divergentes': isAdmin != null && (isAdmin || permissoes['conferencia'] === true),
     }
 
     // Funcionário: todos os botões permitidos vão direto para frente (sem painel, sem drag)
@@ -419,6 +423,7 @@ export default function Home() {
             <MetricCard label="Pedir hoje" value={dados?.precisamPedir} color={C.red} href="/estoque?filtro=pedir" />
             <MetricCard label="Estoque OK" value={dados?.estoqueOk} color={C.green} href="/estoque?filtro=ok" />
             <MetricCard label="Vencendo 7d" value={dados?.vencendo7d ?? 0} color={C.orange} href="/estoque?filtro=vencendo" />
+            <MetricCard label="Validades divergentes" value={dados?.validadesDivergentes ?? undefined} color={C.red} href="/validades-divergentes" span2 />
             {dados?.valorEstoque != null && dados.valorEstoque > 0 && (
               <div style={{
                 gridColumn: 'span 2',
