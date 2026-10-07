@@ -1,0 +1,331 @@
+/* Telas de autenticação: sempre no tema escuro, independente do data-theme do app */
+
+.page {
+  --a-bg: #0B0D14;
+  --a-panel: #11131B;
+  --a-card: #12141D;
+  --a-border: #262A3B;
+  --a-input: #0D0F17;
+  --a-text: #F1F2F6;
+  --a-text2: #A3A8C3;
+  --a-muted: #6B7090;
+  --a-accent: #A5B4FC;
+
+  color-scheme: dark;
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--a-bg);
+  color: var(--a-text);
+}
+
+/* Brilhos ficam numa camada própria com overflow hidden, para não gerar scroll horizontal */
+.glows {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.glowPurple,
+.glowCyan {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+}
+.glowPurple {
+  width: 120vw; height: 60vh;
+  left: -30vw; top: -20vh;
+  background: radial-gradient(closest-side, rgba(99, 102, 241, 0.55), rgba(99, 102, 241, 0));
+}
+.glowCyan {
+  width: 90vw; height: 50vh;
+  right: -40vw; top: 25vh;
+  background: radial-gradient(closest-side, rgba(34, 211, 238, 0.28), rgba(34, 211, 238, 0));
+}
+
+/* ── Hero (celular) ── */
+.hero { display: none; }
+
+.mobileHero {
+  position: relative;
+  padding: max(56px, env(safe-area-inset-top)) 20px 40px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.mobileTitle {
+  margin: 18px 0 0;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.mobileTagline {
+  margin: 8px 0 0;
+  font-size: 15px;
+  color: var(--a-text2);
+}
+
+/* ── Painel / cartão ── */
+.panel {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.card {
+  flex: 1;
+  background: var(--a-card);
+  border: 1px solid var(--a-border);
+  border-bottom: none;
+  border-radius: 28px 28px 0 0;
+  padding: 28px 20px max(32px, env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.onlyDesktop { display: none; }
+
+/* ── Computador ── */
+@media (min-width: 900px) {
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  }
+  .glows { right: 44%; }
+  .glowPurple {
+    width: 70vw; height: 80vh;
+    left: -20vw; top: -25vh;
+  }
+  .glowCyan {
+    width: 50vw; height: 60vh;
+    right: auto; left: 20vw; top: auto; bottom: -25vh;
+    background: radial-gradient(closest-side, rgba(34, 211, 238, 0.3), rgba(34, 211, 238, 0));
+  }
+
+  .mobileHero { display: none; }
+  .onlyMobile { display: none; }
+  .onlyDesktop { display: inline; }
+
+  .hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 56px clamp(40px, 5vw, 72px) 64px;
+    min-height: 100vh;
+  }
+  .heroTitle {
+    margin: 0;
+    font-size: clamp(40px, 4.4vw, 64px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+  }
+  .gradientText {
+    background: linear-gradient(90deg, #A5B4FC 0%, #8B5CF6 35%, #22D3EE 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .heroText {
+    margin: 24px 0 0;
+    max-width: 480px;
+    font-size: 17px;
+    line-height: 1.55;
+    color: var(--a-text2);
+  }
+  .badges {
+    margin-top: 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .badge {
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 13px;
+    font-weight: 700;
+    color: #D7DAEA;
+  }
+
+  .panel {
+    background: var(--a-panel);
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+    justify-content: center;
+    align-items: center;
+    padding: 48px 32px;
+  }
+  .card {
+    flex: none;
+    width: 100%;
+    max-width: 380px;
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+}
+
+/* ── Conteúdo do formulário ── */
+.title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.subtitle {
+  margin: 6px 0 24px;
+  font-size: 15px;
+  color: var(--a-text2);
+}
+@media (min-width: 900px) {
+  .title { font-size: 32px; }
+  .subtitle { margin-bottom: 32px; }
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.label {
+  display: block;
+  margin: 0 0 8px 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #C9CCE0;
+}
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: var(--a-input);
+  border: 1px solid var(--a-border);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field:focus-within {
+  border-color: #6366F1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22), 0 0 18px rgba(139, 92, 246, 0.25);
+}
+.fieldIcon {
+  flex-shrink: 0;
+  color: var(--a-muted);
+  display: flex;
+}
+.field:focus-within .fieldIcon { color: var(--a-accent); }
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--a-text);
+  font-size: 16px;
+}
+.input::placeholder { color: var(--a-muted); }
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--a-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--a-input) inset;
+  caret-color: var(--a-text);
+  transition: background-color 9999s;
+}
+.eye {
+  flex-shrink: 0;
+  display: flex;
+  padding: 6px;
+  margin-right: -6px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--a-muted);
+  cursor: pointer;
+}
+.eye:hover { color: var(--a-text2); }
+
+.rowEnd {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -6px;
+}
+.link {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--a-accent);
+  cursor: pointer;
+}
+.link:disabled { opacity: 0.5; cursor: default; }
+
+.btn {
+  width: 100%;
+  height: 54px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #6366F1, #8B5CF6);
+  box-shadow: 0 10px 28px rgba(99, 102, 241, 0.35);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: filter 0.15s, opacity 0.15s;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: 0.6; cursor: default; filter: none; }
+
+.error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #F87171;
+  font-size: 14px;
+  text-align: center;
+}
+
+.footer {
+  margin: 22px 0 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--a-muted);
+}
+
+/* Estados (email enviado, sucesso, etc.) */
+.state {
+  text-align: center;
+  padding: 8px 0;
+}
+.stateIcon {
+  width: 64px; height: 64px;
+  margin: 0 auto 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+.stateText {
+  margin: 8px 0 24px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--a-text2);
+}
+.stateText strong { color: var(--a-text); }
