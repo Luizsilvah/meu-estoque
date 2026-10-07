@@ -4,11 +4,14 @@ import { useRouter } from 'next/navigation'
 import { D } from '@/app/lib/theme'
 import BarcodeCameraButton from '@/app/components/BarcodeCameraButton'
 import { invalidarEstoqueCache } from '@/app/lib/estoqueCache'
+import ModalLotes, { type LoteAdd, type LoteRemover } from '@/app/components/ModalLotes'
+import type { Validade } from '@/app/lib/validades'
 
 type Produto = {
   produto_id: string
   estoque_id: string | null
   qtd_atual: number
+  qtd_cozinha?: number
   qtd_base: number
   qtd_max: number
   nome: string
@@ -17,6 +20,8 @@ type Produto = {
 }
 
 type Modal = { produto: Produto; tipo: 'entrada' | 'saida' } | null
+// Segundo passo: validades (entrada) ou lotes de onde sai (saída), já com os lotes do produto
+type ModalLotesMov = { produto: Produto; tipo: 'entrada' | 'saida'; quantidade: number; validades: Validade[] } | null
 
 const ENTRADA = '#16A34A'
 const SAIDA   = '#DC2626'
@@ -31,6 +36,7 @@ export default function Scanner() {
   const [quantidade, setQuantidade] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [modalLotes, setModalLotes] = useState<ModalLotesMov>(null)
 
   async function onScanned(codigo: string) {
     setBuscando(true)
@@ -66,28 +72,21 @@ export default function Scanner() {
     setQuantidade('')
   }
 
+  // Passo 1: quantidade. Busca os lotes do produto e abre o modal de lotes —
+  // a gravação (quantidade + histórico + lotes) acontece só lá, numa chamada.
   async function salvar() {
     if (!modal || !quantidade || Number(quantidade) <= 0) return
     setSalvando(true)
     try {
-      const res = await fetch('/api/movimentacao', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          produto_id: modal.produto.produto_id,
-          tipo: modal.tipo,
-          quantidade: Number(quantidade),
-        }),
-      })
+      const res = await fetch(`/api/validades?produto_id=${modal.produto.produto_id}`)
       const json = await res.json()
-      if (!res.ok || json.erro) {
-        setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false })
+      if (!res.ok || !Array.isArray(json)) {
+        setFeedback({ msg: json?.erro ?? 'Erro ao buscar validades', ok: false })
         return
       }
-      invalidarEstoqueCache()
-      setProduto((p) => p ? { ...p, qtd_atual: json.qtd_atual ?? p.qtd_atual } : p)
-      setFeedback({ msg: modal.tipo === 'entrada' ? 'Entrada registrada!' : 'Saída registrada!', ok: true })
-      setTimeout(fecharModal, 900)
+      setFeedback(null)
+      setModalLotes({ produto: modal.produto, tipo: modal.tipo, quantidade: Math.floor(Number(quantidade)), validades: json })
+      setModal(null)
     } catch {
       setFeedback({ msg: 'Erro de conexão', ok: false })
     } finally {
@@ -95,8 +94,44 @@ export default function Scanner() {
     }
   }
 
+  // Passo 2: grava tudo pela RPC movimentacao_registrar (via /api/movimentacao).
+  async function registrar(lotesAdd: LoteAdd[], lotesRemover: LoteRemover[]) {
+    if (!modalLotes) return
+    const { produto: prod, tipo, quantidade: qtd } = modalLotes
+    setSalvando(true); setFeedback(null)
+    try {
+      const res = await fetch('/api/movimentacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ produto_id: prod.produto_id, tipo, quantidade: qtd, lotes_add: lotesAdd, lotes_remover: lotesRemover }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.erro) {
+        setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false })
+        return
+      }
+      invalidarEstoqueCache()
+      setProduto((p) => p ? { ...p, qtd_atual: json.qtd_atual ?? p.qtd_atual, qtd_cozinha: json.qtd_cozinha ?? p.qtd_cozinha } : p)
+      setFeedback({ msg: tipo === 'entrada' ? 'Entrada registrada!' : 'Saída registrada!', ok: true })
+      setTimeout(() => { setModalLotes(null); setQuantidade(''); setFeedback(null) }, 900)
+    } catch {
+      setFeedback({ msg: 'Erro de conexão', ok: false })
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  function voltarParaQuantidade() {
+    if (!modalLotes) return
+    setModal({ produto: modalLotes.produto, tipo: modalLotes.tipo })
+    setQuantidade(String(modalLotes.quantidade))
+    setFeedback(null)
+    setModalLotes(null)
+  }
+
   const precisaPedir = produto ? produto.qtd_atual < produto.qtd_base : false
-  const qtdMaxSaida = modal?.tipo === 'saida' ? modal.produto.qtd_atual : Infinity
+  // Scanner só tira do principal: total − cozinha
+  const qtdMaxSaida = modal?.tipo === 'saida' ? modal.produto.qtd_atual - (modal.produto.qtd_cozinha ?? 0) : Infinity
   const qtdSaidaExcedida = modal?.tipo === 'saida' && !!quantidade && Number(quantidade) > qtdMaxSaida
 
   const btnBase: React.CSSProperties = {
@@ -305,7 +340,7 @@ export default function Scanner() {
                 cursor: salvando || !quantidade || Number(quantidade) <= 0 ? 'not-allowed' : 'pointer',
               }}
             >
-              {salvando ? 'Salvando...' : `Confirmar ${modal.tipo === 'entrada' ? 'entrada' : 'saída'}`}
+              {salvando ? 'Carregando...' : 'Continuar'}
             </button>
 
             <button
@@ -316,6 +351,23 @@ export default function Scanner() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Modal de lotes — validade na entrada, lotes (FEFO) na saída */}
+      {modalLotes && (
+        <ModalLotes
+          produtoNome={modalLotes.produto.nome}
+          unidade={modalLotes.produto.unidade}
+          delta={modalLotes.tipo === 'entrada' ? modalLotes.quantidade : -modalLotes.quantidade}
+          validades={modalLotes.validades}
+          titulo={modalLotes.tipo === 'entrada' ? 'Entrada — validade das unidades' : 'Saída — de quais lotes?'}
+          textoConfirmar={modalLotes.tipo === 'entrada' ? 'Registrar entrada' : 'Confirmar saída'}
+          corConfirmar={modalLotes.tipo === 'entrada' ? ENTRADA : SAIDA}
+          salvando={salvando}
+          feedback={feedback}
+          onVoltar={voltarParaQuantidade}
+          onConfirmar={registrar}
+        />
       )}
     </div>
   )

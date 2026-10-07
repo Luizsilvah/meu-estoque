@@ -37,7 +37,11 @@ export async function PATCH(request: Request) {
   if (!await autenticar()) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const body = await request.json().catch(() => null)
-  const { estoque_id, produto_id, nome, fornecedor_id, unidade, qtd_base, qtd_max, foto_url, codigo_barras, preco_custo, qtd_cozinha, qtd_atual } = body ?? {}
+  // qtd_atual/qtd_cozinha NÃO são gravadas aqui: mudar a quantidade sem mexer
+  // nos lotes de validade dessincronizava estoque x validades. A tela de
+  // edição grava quantidade + lotes por /api/estoque/conferencia (RPC
+  // conferencia_ajustar, tipo 'correcao').
+  const { estoque_id, produto_id, nome, fornecedor_id, unidade, qtd_base, qtd_max, foto_url, codigo_barras, preco_custo } = body ?? {}
 
   if (!estoque_id || !produto_id || !nome?.trim() || !fornecedor_id || !unidade?.trim()) {
     return Response.json({ erro: 'Campos obrigatórios ausentes' }, { status: 400 })
@@ -57,9 +61,7 @@ export async function PATCH(request: Request) {
 
   if (erroProduto) return Response.json({ erro: erroProduto.message }, { status: 500 })
 
-  const estoqueUpdate: Record<string, unknown> = { qtd_base: Number(qtd_base) || 0, qtd_max: Number(qtd_max) || 0 }
-  if (qtd_cozinha !== undefined) estoqueUpdate.qtd_cozinha = Math.max(0, Number(qtd_cozinha) || 0)
-  if (qtd_atual !== undefined) estoqueUpdate.qtd_atual = Math.max(0, Number(qtd_atual) || 0)
+  const estoqueUpdate = { qtd_base: Number(qtd_base) || 0, qtd_max: Number(qtd_max) || 0 }
 
   const { error: erroEstoque } = await supabase
     .from('estoque')

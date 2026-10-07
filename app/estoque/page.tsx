@@ -10,6 +10,7 @@ import FotoThumb from '@/app/components/FotoThumb'
 import type { ItemPrevisaoCompra } from '@/app/api/previsao-compras/route'
 import { comprimirImagem } from '@/app/lib/comprimirImagem'
 import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
+import ModalLotes, { type LoteAdd, type LoteRemover } from '@/app/components/ModalLotes'
 
 type ItemEstoque = {
   id: string
@@ -66,6 +67,9 @@ function EstoqueContent() {
   const [form, setForm] = useState({ nome: '', fornecedor_id: '', unidade: '', qtd_base: '', qtd_max: '', codigo_barras: '', preco_custo: '', qtd_atual: '' })
   const [salvando, setSalvando] = useState(false)
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null)
+  // Quantidade mudou no "Editar produto": modal de lotes antes de gravar
+  const [ajusteQtd, setAjusteQtd] = useState<{ delta: number } | null>(null)
+  const [feedbackAjuste, setFeedbackAjuste] = useState<{ msg: string; ok: boolean } | null>(null)
   const [uploadandoFoto, setUploadandoFoto] = useState(false)
   const fotoInputRef = useRef<HTMLInputElement>(null)
   const [confirmarApagar, setConfirmarApagar] = useState(false)
@@ -253,10 +257,25 @@ function EstoqueContent() {
     }
   }
 
-  // Salva as alterações do produto (nome, fornecedor, unidade, preço, quantidades)
-  async function salvar() {
+  // Salva as alterações do produto (nome, fornecedor, unidade, preço, mín/máx).
+  // Se a quantidade mudou, antes abre o modal de lotes (aumentou → validade;
+  // diminuiu → de qual lote, FEFO sugerido) e grava pela conferencia_ajustar.
+  function salvar() {
     if (!editando) return
-    setSalvando(true); setFeedback(null)
+    const delta = Math.max(0, Math.floor(Number(form.qtd_atual) || 0)) - editando.qtd_atual
+    if (delta !== 0) {
+      setFeedback(null); setFeedbackAjuste(null)
+      setAjusteQtd({ delta })
+      return
+    }
+    void gravar(null)
+  }
+
+  async function gravar(lotes: { lotesAdd: LoteAdd[]; lotesRemover: LoteRemover[] } | null) {
+    if (!editando) return
+    // Mensagens aparecem no modal que está aberto (o de lotes, se houver ajuste)
+    const setMsg = lotes ? setFeedbackAjuste : setFeedback
+    setSalvando(true); setMsg(null)
     try {
       const res = await fetch('/api/produto', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -266,14 +285,49 @@ function EstoqueContent() {
           qtd_base: Number(form.qtd_base), qtd_max: Number(form.qtd_max),
           codigo_barras: form.codigo_barras.trim() || null,
           preco_custo: form.preco_custo !== '' ? Number(form.preco_custo) : null,
-          qtd_atual: Number(form.qtd_atual),
         }),
       })
       const json = await res.json()
-      if (!res.ok || json.erro) { setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+      if (!res.ok || json.erro) { setMsg({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
       invalidarEstoqueCache()
+
+      // Quantidade + lotes numa transação só. 'correcao' não conta como
+      // consumo na previsão de compras. Se o total ficar abaixo da cozinha,
+      // a cozinha desce junto (a RPC recusa cozinha > total).
+      let novaQtdAtual = editando.qtd_atual
+      let novaQtdCozinha = editando.qtd_cozinha
+      if (lotes) {
+        const alvo = Math.max(0, Math.floor(Number(form.qtd_atual) || 0))
+        const resAj = await fetch('/api/estoque/conferencia', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            produto_id: editando.produto_id,
+            nova_qtd_atual: alvo,
+            nova_qtd_cozinha: Math.min(editando.qtd_cozinha ?? 0, alvo),
+            tipo: 'correcao',
+            lotes_add: lotes.lotesAdd,
+            lotes_remover: lotes.lotesRemover,
+          }),
+        })
+        const jsonAj = await resAj.json()
+        if (!resAj.ok || jsonAj.erro) {
+          setMsg({ msg: `Dados do produto salvos, mas a quantidade não: ${jsonAj.erro ?? 'erro ao ajustar'}`, ok: false })
+          return
+        }
+        novaQtdAtual = jsonAj.qtd_atual
+        novaQtdCozinha = jsonAj.qtd_cozinha
+        // Rebusca os lotes reais — um lote novo criado pela RPC não tem id no cliente.
+        const resVal = await fetch(`/api/validades?produto_id=${editando.produto_id}`)
+        if (resVal.ok) {
+          const lista: Validade[] = await resVal.json()
+          if (Array.isArray(lista)) {
+            setValidades(lista)
+            setValidadesPorProduto((prev) => ({ ...prev, [editando.produto_id]: lista }))
+          }
+        }
+      }
+
       const fornNome = fornecedores.find((f) => f.id === form.fornecedor_id)?.nome ?? null
-      const novaQtdAtual = Number(form.qtd_atual)
       const novaQtdBase = Number(form.qtd_base)
       const novaQtdMax = Number(form.qtd_max)
       const novoProduto = {
@@ -290,6 +344,7 @@ function EstoqueContent() {
           qtd_base: novaQtdBase,
           qtd_max: novaQtdMax,
           qtd_atual: novaQtdAtual,
+          qtd_cozinha: novaQtdCozinha,
           produtos: item.produtos ? { ...item.produtos, ...novoProduto } : null,
         } : item
       ))
@@ -298,12 +353,13 @@ function EstoqueContent() {
         qtd_base: novaQtdBase,
         qtd_max: novaQtdMax,
         qtd_atual: novaQtdAtual,
+        qtd_cozinha: novaQtdCozinha,
         produtos: prev.produtos ? { ...prev.produtos, ...novoProduto } : null,
       } : null)
-      setFeedback({ msg: 'Salvo!', ok: true })
-      setTimeout(fecharModal, 800)
+      setMsg({ msg: 'Salvo!', ok: true })
+      setTimeout(() => { setAjusteQtd(null); setFeedbackAjuste(null); fecharModal() }, 800)
     } catch {
-      setFeedback({ msg: 'Erro de conexão', ok: false })
+      setMsg({ msg: 'Erro de conexão', ok: false })
     } finally { setSalvando(false) }
   }
 
@@ -853,8 +909,9 @@ function EstoqueContent() {
                   </p>
                 )}
 
-                <button onClick={salvar} disabled={salvando || !form.nome || !form.fornecedor_id || !form.unidade}
-                  style={{ background: '#6366F1', color: '#fff', border: 'none', borderRadius: 14, padding: '14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: (salvando || !form.nome || !form.fornecedor_id || !form.unidade) ? 0.5 : 1 }}>
+                {/* loadingVal: sem os lotes carregados o modal de lotes acharia que o produto não tem validade */}
+                <button onClick={salvar} disabled={salvando || loadingVal || !form.nome || !form.fornecedor_id || !form.unidade}
+                  style={{ background: '#6366F1', color: '#fff', border: 'none', borderRadius: 14, padding: '14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: (salvando || loadingVal || !form.nome || !form.fornecedor_id || !form.unidade) ? 0.5 : 1 }}>
                   {salvando ? 'Salvando...' : 'Salvar alterações'}
                 </button>
 
@@ -979,6 +1036,22 @@ function EstoqueContent() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Modal de lotes do "Editar produto" quando a quantidade mudou */}
+      {editando && ajusteQtd && (
+        <ModalLotes
+          produtoNome={form.nome || editando.produtos?.nome || ''}
+          unidade={form.unidade || editando.produtos?.unidade || 'un'}
+          delta={ajusteQtd.delta}
+          validades={validades}
+          titulo={ajusteQtd.delta > 0 ? 'Correção — em qual validade entra?' : 'Correção — de quais lotes sai?'}
+          textoConfirmar="Salvar alterações"
+          salvando={salvando}
+          feedback={feedbackAjuste}
+          onVoltar={() => { setAjusteQtd(null); setFeedbackAjuste(null) }}
+          onConfirmar={(lotesAdd, lotesRemover) => { void gravar({ lotesAdd, lotesRemover }) }}
+        />
       )}
 
       {/* Modal de cadastro de novo produto com opção de criar fornecedor inline */}

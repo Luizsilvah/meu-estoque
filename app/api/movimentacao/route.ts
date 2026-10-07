@@ -1,18 +1,32 @@
-// Endpoint POST /api/movimentacao — registra entradas e saídas de produtos no estoque
+// Endpoint POST /api/movimentacao — registra entradas e saídas de produtos no estoque.
+// Quantidade, histórico e lotes de validade vão numa única chamada à função
+// movimentacao_registrar (1 transação no banco) — ver
+// supabase/migrations/20261006120000_movimentacao_registrar.sql. Antes, o
+// histórico, o estoque e cada lote eram gravados em chamadas separadas, e uma
+// falha no meio deixava qtd_atual diferente da soma dos lotes.
 import { createSupabaseServer } from '@/app/lib/supabase-server'
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 
 type ResultadoMovimentacao = { qtd_atual: number; qtd_cozinha: number; qtd_base: number | null }
+type LoteAdd = { data_validade: string; quantidade: number }
+type LoteRemover = { validade_id: string; quantidade: number }
 
 export async function POST(request: Request) {
-  let body: { produto_id: string; tipo: 'entrada' | 'saida'; quantidade: number; local?: 'principal' | 'cozinha'; motivo?: string; skip_stock_update?: boolean }
+  let body: {
+    produto_id: string
+    tipo: 'entrada' | 'saida'
+    quantidade: number
+    local?: 'principal' | 'cozinha'
+    lotes_add?: LoteAdd[]
+    lotes_remover?: LoteRemover[]
+  }
   try {
     body = await request.json()
   } catch {
     return Response.json({ erro: 'Body inválido' }, { status: 400 })
   }
 
-  const { produto_id, tipo, quantidade, local, skip_stock_update } = body
+  const { produto_id, tipo, quantidade, local, lotes_add, lotes_remover } = body
 
   // Validação dos campos obrigatórios
   if (!produto_id || !tipo || !quantidade || quantidade <= 0) {
@@ -35,51 +49,30 @@ export async function POST(request: Request) {
     .select('nome')
     .eq('id', user.id)
     .single()
-  const usuario_id = user.id
   const usuario_nome = perfil?.nome ?? user.email?.split('@')[0] ?? null
 
-  // Grava o registro histórico da movimentação
-  const { error: erroMov } = await supabase
-    .from('movimentacoes')
-    .insert({
-      produto_id,
-      tipo,
-      quantidade,
-      data_hora: new Date().toISOString(),
-      usuario_id,
-      usuario_nome,
-    })
-
-  if (erroMov) {
-    console.error('[movimentacao] erro ao inserir movimentação:', erroMov)
-    return Response.json({ erro: erroMov.message }, { status: 500 })
-  }
-
-  // Entrada soma, saída subtrai
-  const delta = tipo === 'entrada' ? quantidade : -quantidade
-
-  // Quando chamado pela conferência, o /api/estoque/conferencia já atualizou o estoque
-  // com os valores absolutos finais — apenas registra o histórico sem tocar no estoque
-  if (skip_stock_update) {
-    return Response.json({ ok: true })
-  }
-
-  // Aplica o delta em qtd_atual (e em qtd_cozinha quando é saída da cozinha) de forma
-  // atômica no Postgres — leitura+cálculo+escrita em uma única transação via RPC,
-  // evitando corrida entre requisições concorrentes no mesmo produto
+  // Saída da cozinha também baixa qtd_cozinha; o resto só mexe em qtd_atual
   const deltaCozinha = tipo === 'saida' && local === 'cozinha' ? -quantidade : 0
-  const { data: resultado, error: erroUpdate } = await supabase
-    .rpc('estoque_aplicar_movimentacao', {
+  const { data: resultado, error } = await supabase
+    .rpc('movimentacao_registrar', {
       p_produto_id: produto_id,
-      p_delta_atual: delta,
+      p_tipo: tipo,
+      p_quantidade: Math.floor(Number(quantidade)),
       p_delta_cozinha: deltaCozinha,
+      p_lotes_add: Array.isArray(lotes_add) ? lotes_add : [],
+      p_lotes_remover: Array.isArray(lotes_remover) ? lotes_remover : [],
+      p_usuario_id: user.id,
+      p_usuario_nome: usuario_nome,
     })
     .single<ResultadoMovimentacao>()
 
-  if (erroUpdate || !resultado) {
-    console.error('[movimentacao] erro ao atualizar estoque:', erroUpdate?.message)
-    const status = erroUpdate?.code === 'ESTK1' ? 404 : 500
-    return Response.json({ erro: erroUpdate?.message ?? 'Erro ao atualizar estoque' }, { status })
+  if (error || !resultado) {
+    console.error('[movimentacao] erro ao registrar:', error?.message)
+    // Erros de validação da própria função (MOVxx, CNFxx de lote) são erro do
+    // usuário — 400; produto inexistente (ESTK1) — 404; o resto — 500.
+    const code = error?.code ?? ''
+    const status = code === 'ESTK1' ? 404 : code.startsWith('MOV') || code.startsWith('CNF') ? 400 : 500
+    return Response.json({ erro: error?.message ?? 'Erro ao registrar movimentação' }, { status })
   }
 
   const { qtd_atual: novaQtd, qtd_cozinha: novaQtdCozinha, qtd_base: qtdBase } = resultado
