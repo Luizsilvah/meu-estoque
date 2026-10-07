@@ -22,8 +22,9 @@ export type Funcao = {
   grupo: GrupoFuncao
   /** Valor inicial ao criar um funcionário novo. */
   padrao: boolean
-  /** Chave antiga usada quando a chave desta função ainda não existe no jsonb. */
-  herdaDe?: string
+  /** Chave(s) antiga(s) usada(s) quando a chave desta função ainda não existe no
+   *  jsonb. Com mais de uma, basta ter qualquer uma delas. */
+  herdaDe?: string | string[]
   /** Só admin — não aparece como interruptor para funcionário. */
   somenteAdmin?: boolean
   /** Tem permissão e trava de página, mas não aparece como botão no menu. */
@@ -45,7 +46,10 @@ export const FUNCOES: Funcao[] = [
   { id: 'chat',   href: '/chat',           emoji: '💬', nome: 'Chat IA', grupo: 'Equipe e chat', padrao: true,  descricao: 'Conversar com a equipe e a IA' },
   { id: 'checklist',      href: '/checklist',      emoji: '🛒', nome: 'Checklist',      grupo: 'Compras', padrao: true,  descricao: 'Checklist de compras' },
   { id: 'transferencia', href: '/transferencia', emoji: '↔️', nome: 'Transferência', grupo: 'Estoque', padrao: true,  descricao: 'Mover entre principal e cozinha' },
-  { id: 'nota',           href: '/nota',           emoji: '📷', nome: 'Lançar nota',    grupo: 'Compras', padrao: false, descricao: 'Dar entrada pela nota fiscal' },
+  // Herda de Movimentação OU Transferência enquanto a chave não existir. A rota
+  // de lançamento confere item a item a permissão do tipo (entrada/saída/transf.).
+  { id: 'lancamento-rapido', href: '/lancamento-rapido', emoji: '⚡', nome: 'Lançamento rápido', grupo: 'Estoque', padrao: true, herdaDe: ['movimentacao', 'transferencia'], descricao: 'Anotar o dia e lançar tudo de uma vez' },
+  { id: 'nota',          href: '/nota',           emoji: '📷', nome: 'Lançar nota',    grupo: 'Compras', padrao: false, descricao: 'Dar entrada pela nota fiscal' },
   { id: 'equipe', href: '/admin/usuarios', emoji: '👥', nome: 'Equipe',  grupo: 'Equipe e chat', padrao: false, somenteAdmin: true, descricao: 'Usuários e permissões' },
   { id: 'codigos',       href: '/codigos',       emoji: '🔢', nome: 'Etiquetas',       grupo: 'Estoque', padrao: false, descricao: 'Gerenciar códigos de barras' },
   // Relatório e Gráficos são abas da mesma página /relatorio: cada aba aparece
@@ -73,7 +77,8 @@ export function podeAcessar(funcao: Funcao, perfil: string | null | undefined, p
   if (funcao.somenteAdmin) return false
   const valor = permissoes?.[funcao.id]
   if (typeof valor === 'boolean') return valor
-  return funcao.herdaDe ? permissoes?.[funcao.herdaDe] === true : false
+  const antigas = funcao.herdaDe == null ? [] : Array.isArray(funcao.herdaDe) ? funcao.herdaDe : [funcao.herdaDe]
+  return antigas.some((id) => permissoes?.[id] === true)
 }
 
 /**

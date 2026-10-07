@@ -75,6 +75,7 @@ const PATHS: Record<string, React.ReactNode> = {
   bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
   chevron: <><path d="m9 6 6 6-6 6" /></>,
+  zap: <><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" /></>,
 }
 
 function Icone({ nome, size = 22, cor = 'currentColor', traco = 2 }: { nome: string; size?: number; cor?: string; traco?: number }) {
@@ -96,6 +97,7 @@ const VISUAL: Record<string, { icone: string; cor: string; nome?: string; curto?
   chat:                    { icone: 'chat',      cor: COR.rosa, curto: 'Chat' },
   checklist:               { icone: 'list',      cor: COR.ciano },
   transferencia:           { icone: 'leftRight', cor: COR.ciano, curto: 'Transferir' },
+  'lancamento-rapido':     { icone: 'zap',       cor: COR.indigo, curto: 'Lanç. rápido' },
   nota:                    { icone: 'file',      cor: COR.roxo, curto: 'Nota fiscal' },
   equipe:                  { icone: 'users',     cor: COR.indigo },
   codigos:                 { icone: 'barcode',   cor: COR.indigo },
