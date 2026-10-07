@@ -1,6 +1,11 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { D } from '@/app/lib/theme'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import SearchBar from '@/app/components/ui/SearchBar'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 import FotoThumb from '@/app/components/FotoThumb'
 import { buscarEstoque } from '@/app/lib/estoqueCache'
 
@@ -30,7 +35,7 @@ function BarcodeCell({ codigo, forcarVisivel }: { codigo: string; forcarVisivel:
     return () => obs.disconnect()
   }, [visivel])
 
-  // Imprimir (Ctrl+P, não só o botão 🖨️ desta página) só captura o que já está no
+  // Imprimir (Ctrl+P, não só o botão Imprimir desta página) só captura o que já está no
   // DOM — então força tudo a renderizar antes de qualquer impressão, mesmo o que
   // ainda não foi visto. O botão de imprimir também força isso explicitamente
   // (prop forcarVisivel) e espera um frame antes de chamar window.print().
@@ -139,100 +144,116 @@ export default function CodigosBarras() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#F0F2F5' }}>
+    <div className="etq-raiz min-h-screen" style={{ background: D.bg }}>
 
-      {/* Header — oculto na impressão */}
-      <div style={{ background: '#1A3C5E' }} className="px-5 pt-10 pb-6 print:hidden">
-        <Link href="/" className="text-blue-300 text-xs mb-3 block">← Voltar</Link>
-        <h1 className="text-white text-2xl font-bold tracking-tight">Etiquetas</h1>
-        <p className="text-blue-200 text-sm mt-1">
-          {loading ? 'Carregando...' : `${filtrados.length} produto${filtrados.length !== 1 ? 's' : ''}`}
-        </p>
-      </div>
-
-      {/* Título só na impressão */}
-      <div className="hidden print:block px-6 pt-6 pb-2">
-        <h1 className="text-xl font-bold text-gray-900">Etiquetas — Estoque</h1>
-        <p className="text-xs text-gray-500 mt-1">
-          {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-        </p>
-      </div>
-
-      <div className="px-4 py-5 max-w-2xl mx-auto">
-
-        {/* Barra de ações */}
-        <div className="flex gap-2 mb-4 print:hidden">
-          <input
-            type="text"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome, fornecedor ou código..."
-            className="flex-1 bg-white rounded-xl px-4 py-2.5 text-sm text-gray-800 border border-gray-200 outline-none focus:border-[#1A3C5E] transition-colors"
+      {/* ── Tela (some na impressão) ── */}
+      <div className="print:hidden">
+        <Page>
+          <PageHeader
+            titulo="Etiquetas"
+            subtitulo={loading ? 'Carregando...' : `${filtrados.length} produto${filtrados.length !== 1 ? 's' : ''}`}
           />
-          <button
-            onClick={exportarCSV}
-            disabled={filtrados.length === 0}
-            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 shrink-0"
-            style={{ background: '#1A3C5E' }}
-          >
-            CSV
-          </button>
-          <button
-            onClick={imprimir}
-            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white shrink-0"
-            style={{ background: '#374151' }}
-          >
-            🖨️
-          </button>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <SearchBar value={busca} onChange={setBusca} placeholder="Buscar por nome, fornecedor ou código..." />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button onClick={exportarCSV} disabled={filtrados.length === 0}
+                style={{ height: 46, borderRadius: 14, border: `1px solid ${D.border}`, background: D.card, color: D.text, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit', opacity: filtrados.length === 0 ? 0.4 : 1 }}>
+                <Icon nome="download" size={18} /> Exportar CSV
+              </button>
+              <button onClick={imprimir}
+                style={{ height: 46, borderRadius: 14, border: 'none', background: '#6366F1', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit' }}>
+                <Icon nome="printer" size={18} /> Imprimir
+              </button>
+            </div>
+
+            {loading ? (
+              <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Carregando...</p>
+            ) : filtrados.length === 0 ? (
+              <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>
+                {dados.length === 0
+                  ? 'Nenhum produto com código de barras cadastrado.'
+                  : 'Nenhum resultado para a busca.'}
+              </p>
+            ) : filtrados.map((item, idx) => (
+              <Card key={item.codigo_barras + idx} style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <FotoThumb src={item.foto_url} size={44} radius={12} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: D.text, fontSize: 15, fontWeight: 800, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.nome}</p>
+                    <p style={{ color: D.text2, fontSize: 12, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.fornecedor}</p>
+                  </div>
+                </div>
+                {/* Etiqueta: fundo branco para o código ficar legível também no tema escuro */}
+                <div style={{ background: '#fff', borderRadius: 10, padding: '6px 10px', overflowX: 'auto' }}>
+                  <BarcodeCell codigo={item.codigo_barras} forcarVisivel={imprimirTudo} />
+                </div>
+              </Card>
+            ))}
+          </div>
+        </Page>
+      </div>
+
+      {/* ── Impressão (layout igual ao de antes; só aparece ao imprimir) ── */}
+      <div className="hidden print:block">
+        {/* Título só na impressão */}
+        <div className="px-6 pt-6 pb-2">
+          <h1 className="text-xl font-bold text-gray-900">Etiquetas — Estoque</h1>
+          <p className="text-xs text-gray-500 mt-1">
+            {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+          </p>
         </div>
 
-        {/* Tabela */}
-        {loading ? (
-          <p className="text-gray-400 text-sm text-center py-10">Carregando...</p>
-        ) : filtrados.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-10">
-            {dados.length === 0
-              ? 'Nenhum produto com código de barras cadastrado.'
-              : 'Nenhum resultado para a busca.'}
-          </p>
-        ) : (
-          <div
-            className="bg-white rounded-2xl overflow-hidden print:rounded-none print:shadow-none"
-            style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
-          >
-            <table className="w-full text-sm">
-              <thead className="print:hidden">
-                <tr style={{ background: '#F8F9FA' }}>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Produto</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Fornecedor</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtrados.map((item, idx) => (
-                  <tr key={item.codigo_barras + idx} className="border-t border-gray-100 print:break-inside-avoid">
-                    <td className="px-4 py-3 align-top">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <FotoThumb src={item.foto_url} />
-                        <span className="text-gray-800 font-medium">{item.nome}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 hidden sm:table-cell align-top">{item.fornecedor}</td>
-                    <td className="px-4 py-3 align-top">
-                      <BarcodeCell codigo={item.codigo_barras} forcarVisivel={imprimirTudo} />
-                    </td>
+        <div className="px-4 py-5 max-w-2xl mx-auto">
+          {loading ? (
+            <p className="text-gray-400 text-sm text-center py-10">Carregando...</p>
+          ) : filtrados.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-10">
+              {dados.length === 0
+                ? 'Nenhum produto com código de barras cadastrado.'
+                : 'Nenhum resultado para a busca.'}
+            </p>
+          ) : (
+            <div
+              className="bg-white rounded-2xl overflow-hidden print:rounded-none print:shadow-none"
+              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
+            >
+              <table className="w-full text-sm">
+                <thead className="print:hidden">
+                  <tr style={{ background: '#F8F9FA' }}>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Produto</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Fornecedor</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {filtrados.map((item, idx) => (
+                    <tr key={item.codigo_barras + idx} className="border-t border-gray-100 print:break-inside-avoid">
+                      <td className="px-4 py-3 align-top">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <FotoThumb src={item.foto_url} />
+                          <span className="text-gray-800 font-medium">{item.nome}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 hidden sm:table-cell align-top">{item.fornecedor}</td>
+                      <td className="px-4 py-3 align-top">
+                        <BarcodeCell codigo={item.codigo_barras} forcarVisivel={imprimirTudo} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Estilos de impressão */}
       <style>{`
         @media print {
           body { background: white !important; }
+          .etq-raiz { background: white !important; }
           table { width: 100%; border-collapse: collapse; }
           td, th { padding: 6px 12px; border-bottom: 1px solid #e5e7eb; }
           tr { break-inside: avoid; }

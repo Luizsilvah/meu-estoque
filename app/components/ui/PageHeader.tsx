@@ -7,20 +7,25 @@ type Props = {
   subtitulo?: React.ReactNode
   /** Para onde a seta volta (padrão: tela inicial) */
   voltarPara?: string
+  /** Em vez de navegar, a seta chama esta função (ex.: voltar um passo dentro da página) */
+  onVoltar?: () => void
   /** Botão/elemento à direita, ex.: <BotaoAcao icone="plus" ... /> */
   acao?: React.ReactNode
 }
 
 /** Cabeçalho compacto: seta de voltar num quadrado, título, subtítulo e ação opcional à direita. */
-export default function PageHeader({ titulo, subtitulo, voltarPara = '/', acao }: Props) {
+export default function PageHeader({ titulo, subtitulo, voltarPara = '/', onVoltar, acao }: Props) {
+  const estiloVoltar: React.CSSProperties = {
+    width: 42, height: 42, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: D.card, border: `1px solid ${D.border}`, color: D.text, cursor: 'pointer', padding: 0,
+  }
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 'max(16px, env(safe-area-inset-top)) 0 16px' }}>
-      <Link href={voltarPara} aria-label="Voltar" style={{
-        width: 42, height: 42, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: D.card, border: `1px solid ${D.border}`, color: D.text,
-      }}>
-        <Icon nome="back" size={20} />
-      </Link>
+      {onVoltar ? (
+        <button type="button" onClick={onVoltar} aria-label="Voltar" style={estiloVoltar}><Icon nome="back" size={20} /></button>
+      ) : (
+        <Link href={voltarPara} aria-label="Voltar" style={estiloVoltar}><Icon nome="back" size={20} /></Link>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <h1 style={{ color: D.text, fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px', margin: 0, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {titulo}

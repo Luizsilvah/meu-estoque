@@ -1,7 +1,8 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
+import PageHeader from '@/app/components/ui/PageHeader'
+import Icon from '@/app/components/ui/Icon'
 
 import { D } from '@/app/lib/theme'
 import { createSupabaseBrowser } from '@/app/lib/supabase-browser'
@@ -311,7 +312,7 @@ export default function Chat() {
   const membroIds = new Set(membros.map((m) => m.usuario_id))
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - var(--bottomnav-h, 0px))', overflow: 'hidden', background: D.bg }}>
+    <div style={{ display: 'flex', height: 'calc(100vh - var(--bottomnav-h, 0px))', overflow: 'hidden', background: D.bg, width: '100%', maxWidth: 480, margin: '0 auto', borderLeft: `1px solid ${D.border}`, borderRight: `1px solid ${D.border}`, boxSizing: 'border-box' }}>
 
       {/* Sidebar */}
       <div style={{
@@ -319,11 +320,13 @@ export default function Chat() {
         width: sidebarAberta ? 224 : 0, transition: 'width 0.2s',
         background: sidebar, borderRight: `1px solid ${D.border}`,
       }}>
-        <div style={{ padding: '48px 12px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: 'max(16px, env(safe-area-inset-top)) 12px 12px 16px', minHeight: 74, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--accent-text)' }}>Canais</span>
           {isAdmin && (
-            <button onClick={() => setModalCriarGrupo(true)}
-              style={{ background: 'none', border: 'none', color: 'var(--accent-text)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>＋</button>
+            <button onClick={() => setModalCriarGrupo(true)} aria-label="Novo grupo"
+              style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--accent-bg)', border: 'none', color: 'var(--accent-text)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+              <Icon nome="plus" size={18} traco={2.4} />
+            </button>
           )}
         </div>
 
@@ -363,7 +366,8 @@ export default function Chat() {
                   </button>
                   {isAdmin && (
                     <button onClick={() => setConfirmarApagarGrupo(g.id)}
-                      style={{ paddingRight: 12, fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', color: D.muted }}>🗑</button>
+                      aria-label={`Apagar grupo ${g.nome}`}
+                      style={{ padding: '0 12px 0 4px', height: 40, background: 'none', border: 'none', cursor: 'pointer', color: D.muted, display: 'flex', alignItems: 'center' }}><Icon nome="trash" size={16} /></button>
                   )}
                 </div>
               )}
@@ -376,28 +380,31 @@ export default function Chat() {
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
 
         {/* Header */}
-        <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '40px 16px 16px', flexShrink: 0 }}>
-          <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 10 }}>← Voltar</Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={() => setSidebarAberta((v) => !v)}
-              style={{ background: 'none', border: 'none', color: D.text, fontSize: 20, cursor: 'pointer', flexShrink: 0 }}>☰</button>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ color: D.text2, fontSize: 12, fontWeight: 500 }}>{canalAtivo ? 'Grupo' : 'Canal geral'}</p>
-              <h1 style={{ color: D.text, fontSize: 18, fontWeight: 800, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}># {nomeCanal}</h1>
-            </div>
-            {isAdmin && grupoAtivo && (
-              <button onClick={() => abrirMembros(grupoAtivo.id)}
-                style={{ background: 'none', border: 'none', color: D.text2, fontSize: 12, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span>👥</span><span>{grupoAtivo.grupo_membros.length}</span>
-              </button>
-            )}
-          </div>
+        <div style={{ padding: '0 12px', borderBottom: `1px solid ${D.border}`, flexShrink: 0 }}>
+          <PageHeader
+            titulo={`# ${nomeCanal}`}
+            subtitulo={canalAtivo ? 'Grupo' : 'Canal geral'}
+            acao={
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                {isAdmin && grupoAtivo && (
+                  <button onClick={() => abrirMembros(grupoAtivo.id)} aria-label="Membros do grupo"
+                    style={{ ...({ width: 44, height: 44, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: D.card, border: `1px solid ${D.border}`, color: D.text, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }), width: 'auto', padding: '0 12px', gap: 6, fontSize: 13, fontWeight: 700, color: D.text2 }}>
+                    <Icon nome="users" size={18} />{grupoAtivo.grupo_membros.length}
+                  </button>
+                )}
+                <button onClick={() => setSidebarAberta((v) => !v)} aria-label="Canais" aria-expanded={sidebarAberta}
+                  style={{ ...({ width: 44, height: 44, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: D.card, border: `1px solid ${D.border}`, color: D.text, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }), ...(sidebarAberta ? { background: 'var(--accent-bg)', color: 'var(--accent-text)', borderColor: '#6366F1' } : {}) }}>
+                  <Icon nome="menu" size={20} />
+                </button>
+              </div>
+            }
+          />
         </div>
 
         {/* Mensagens */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
           {mensagens.length === 0 && (
-            <p style={{ textAlign: 'center', color: D.text2, fontSize: 14, marginTop: 40 }}>Nenhuma mensagem ainda. Diga olá! 👋</p>
+            <p style={{ textAlign: 'center', color: D.text2, fontSize: 14, marginTop: 40 }}>Nenhuma mensagem ainda. Diga olá!</p>
           )}
 
           {msgPorDia.map(({ dia, msgs }) => (
@@ -481,29 +488,30 @@ export default function Chat() {
         </div>
 
         {/* Input */}
-        <div style={{ flexShrink: 0, padding: '12px 16px', display: 'flex', gap: 8, alignItems: 'flex-end', background: D.card, borderTop: `1px solid ${D.border}` }}>
+        <div style={{ flexShrink: 0, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-end', background: D.card, borderTop: `1px solid ${D.border}` }}>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleArquivo} />
-          <button onClick={() => fileInputRef.current?.click()} disabled={uploadando}
-            style={{ flexShrink: 0, width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, background: D.input, border: `1px solid ${D.border}`, cursor: 'pointer', opacity: uploadando ? 0.4 : 1 }}>
-            {uploadando ? '⏳' : '📎'}
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploadando} aria-label="Enviar imagem"
+            style={{ flexShrink: 0, width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: D.input, border: `1px solid ${D.border}`, color: D.text2, cursor: 'pointer', opacity: uploadando ? 0.4 : 1 }}>
+            <span className={uploadando ? 'animate-pulse' : undefined} style={{ display: 'flex' }}><Icon nome={uploadando ? 'clock' : 'image'} size={20} /></span>
           </button>
 
           <textarea ref={inputRef} rows={1} value={texto}
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={`Mensagem em #${nomeCanal}…`}
-            style={{ flex: 1, resize: 'none', borderRadius: 14, padding: '12px 16px', fontSize: 14, color: D.text, background: D.input, border: `1px solid ${D.border}`, outline: 'none', maxHeight: 120, overflowY: 'auto' }}
+            style={{ flex: 1, minWidth: 0, resize: 'none', borderRadius: 14, padding: '11px 14px', fontSize: 16, color: D.text, background: D.input, border: `1px solid ${D.border}`, outline: 'none', maxHeight: 120, overflowY: 'auto', fontFamily: 'inherit' }}
           />
           <button onClick={enviar} disabled={enviando || !texto.trim()}
-            style={{ flexShrink: 0, width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, background: '#6366F1', border: 'none', color: '#fff', cursor: 'pointer', opacity: (enviando || !texto.trim()) ? 0.4 : 1 }}>
-            ➤
+            aria-label="Enviar"
+            style={{ flexShrink: 0, width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#6366F1', border: 'none', color: '#fff', cursor: 'pointer', opacity: (enviando || !texto.trim()) ? 0.4 : 1 }}>
+            <Icon nome="send" size={20} traco={2.4} />
           </button>
         </div>
       </div>
 
       {/* Modal criar grupo */}
       {modalCriarGrupo && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px', background: 'rgba(0,0,0,0.7)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px', background: 'rgba(0,0,0,0.7)' }}>
           <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 24, padding: 24, width: '100%', maxWidth: 360, boxShadow: '0 4px 40px rgba(0,0,0,0.5)' }}>
             <h2 style={{ color: D.text, fontWeight: 800, fontSize: 16, marginBottom: 16 }}>Novo grupo</h2>
             <form onSubmit={criarGrupo} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -526,11 +534,11 @@ export default function Chat() {
 
       {/* Modal membros */}
       {modalMembros && grupoAtivo && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.7)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.7)' }}>
           <div style={{ background: D.card, borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 20px 12px', borderBottom: `1px solid ${D.border}` }}>
               <h2 style={{ color: D.text, fontWeight: 800, fontSize: 15 }}>Membros — {grupoAtivo.nome}</h2>
-              <button onClick={() => setModalMembros(false)} style={{ background: 'none', border: 'none', color: D.text2, fontSize: 20, cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setModalMembros(false)} aria-label="Fechar" style={{ background: 'none', border: 'none', color: D.text2, cursor: 'pointer', display: 'flex', padding: 4 }}><Icon nome="close" size={20} /></button>
             </div>
             {loadingMembros ? (
               <p style={{ textAlign: 'center', color: D.text2, fontSize: 14, padding: '32px 0' }}>Carregando...</p>
@@ -549,7 +557,7 @@ export default function Chat() {
                   <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${D.border}` }}>
                     <span style={{ fontSize: 14, color: D.text }}>{u.nome}</span>
                     <button onClick={() => adicionarMembro(grupoAtivo.id, u.id)}
-                      style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-text)', background: 'none', border: 'none', cursor: 'pointer' }}>+ Adicionar</button>
+                      style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-text)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}><Icon nome="plus" size={14} /> Adicionar</button>
                   </div>
                 ))}
                 {todosUsuarios.filter((u) => !membroIds.has(u.id)).length === 0 && (

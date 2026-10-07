@@ -7,6 +7,13 @@ import {
 } from 'recharts'
 
 import { D } from '@/app/lib/theme'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
+
+const botaoMes: React.CSSProperties = {
+  width: 42, height: 42, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: D.text,
+  background: D.input, border: `1px solid ${D.border}`, cursor: 'pointer', padding: 0,
+}
 
 // Aba "Gráficos" de /relatorio (antes a página /graficos). Carregada com
 // next/dynamic pela página, para o recharts só baixar quando a aba abre.
@@ -133,16 +140,18 @@ export default function AbaGraficos() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* Seletor de mês */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: '12px 16px' }}>
-          <button onClick={() => navMes(-1)}
-            style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: D.text2, fontWeight: 700, fontSize: 20, background: 'none', border: 'none', cursor: 'pointer' }}>‹</button>
+        <Card style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px' }}>
+          <button onClick={() => navMes(-1)} aria-label="Mês anterior" style={botaoMes}>
+            <Icon nome="back" size={20} />
+          </button>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ color: D.text, fontWeight: 600 }}>{MESES[mes - 1]} {ano}</p>
+            <p style={{ color: D.text, fontWeight: 800, fontSize: 15, margin: 0 }}>{MESES[mes - 1]} {ano}</p>
             {ehMesAtual && <p style={{ fontSize: 11, color: 'var(--accent-text)', fontWeight: 600, marginTop: 2 }}>Mês atual</p>}
           </div>
-          <button onClick={() => navMes(+1)} disabled={ehMesAtual}
-            style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: D.text2, fontWeight: 700, fontSize: 20, background: 'none', border: 'none', cursor: 'pointer', opacity: ehMesAtual ? 0.3 : 1 }}>›</button>
-        </div>
+          <button onClick={() => navMes(+1)} disabled={ehMesAtual} aria-label="Próximo mês" style={{ ...botaoMes, opacity: ehMesAtual ? 0.3 : 1 }}>
+            <Icon nome="chevron" size={20} />
+          </button>
+        </Card>
 
         {loading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>

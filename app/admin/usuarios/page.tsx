@@ -1,20 +1,17 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import { D } from '@/app/lib/theme'
-import { FUNCOES, FUNCOES_CONFIGURAVEIS, GRUPOS, Permissoes, permissoesEfetivas, permissoesPadrao } from '@/app/lib/permissoes'
+import { FUNCOES, FUNCOES_CONFIGURAVEIS, GRUPOS, Permissoes, permissoesEfetivas, permissoesPadrao, type Funcao } from '@/app/lib/permissoes'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
+import Toggle from '@/app/components/ui/Toggle'
+import { COR, gradiente, visual } from '@/app/components/ui/visualFuncoes'
 
 type Usuario = { id: string; nome: string; perfil: 'admin' | 'funcionario'; permissoes: Permissoes | null; criado_em: string }
-
-function Toggle({ ativo }: { ativo: boolean }) {
-  return (
-    <div aria-hidden style={{ width: 44, height: 24, borderRadius: 12, background: ativo ? '#6366F1' : D.border, position: 'relative', cursor: 'pointer', flexShrink: 0 }}>
-      <div style={{ position: 'absolute', top: 2, width: 20, height: 20, background: '#fff', borderRadius: '50%', boxShadow: '0 1px 4px rgba(0,0,0,0.4)', transition: 'transform 0.2s', transform: ativo ? 'translateX(22px)' : 'translateX(2px)' }} />
-    </div>
-  )
-}
 
 // Interruptores por função, agrupados, com Marcar/Desmarcar todas. A linha
 // inteira é o botão (área de toque grande no celular).
@@ -23,41 +20,41 @@ function PainelPermissoes({ valor, onChange, disabled }: { valor: Permissoes; on
     onChange({ ...valor, ...Object.fromEntries(FUNCOES_CONFIGURAVEIS.map((f) => [f.id, ligar])) })
   }
   const ligadas = FUNCOES_CONFIGURAVEIS.filter((f) => valor[f.id]).length
-  const btnMini: React.CSSProperties = { flex: 1, padding: '8px 10px', borderRadius: 10, border: `1px solid ${D.border}`, background: D.input, color: D.text2, fontSize: 12, fontWeight: 600, cursor: 'pointer' }
-  const linha: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: D.input, border: 'none', borderRadius: 10, padding: '10px 14px' }
+  const btnMini: React.CSSProperties = { flex: 1, height: 38, borderRadius: 12, border: `1px solid ${D.border}`, background: D.input, color: D.text2, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }
+  const iconeFuncao = (f: Funcao) => {
+    const v = visual(f)
+    return (
+      <span style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `color-mix(in srgb, ${v.cor} 16%, transparent)`, color: v.cor }}>
+        <Icon nome={v.icone} size={18} />
+      </span>
+    )
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 12, color: D.muted, flexShrink: 0 }}>{ligadas} de {FUNCOES_CONFIGURAVEIS.length}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: D.text2, flexShrink: 0 }}>{ligadas}/{FUNCOES_CONFIGURAVEIS.length}</span>
         <button type="button" disabled={disabled} onClick={() => todas(true)} style={btnMini}>Marcar todas</button>
         <button type="button" disabled={disabled} onClick={() => todas(false)} style={btnMini}>Desmarcar todas</button>
       </div>
       {GRUPOS.map((grupo) => (
         <div key={grupo}>
-          <p style={{ color: D.muted, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 6px 2px' }}>{grupo}</p>
+          <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 8px 2px' }}>{grupo}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {FUNCOES.filter((f) => f.grupo === grupo).map((f) => {
-              const texto = (
+            {FUNCOES.filter((f) => f.grupo === grupo).map((f) => f.somenteAdmin ? (
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 14, background: D.input, border: `1px solid ${D.border}`, opacity: 0.6 }}>
+                {iconeFuncao(f)}
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 14, color: D.text2 }}>{f.emoji} {f.nome}</span>
-                  <span style={{ display: 'block', fontSize: 11, color: D.muted, marginTop: 1 }}>{f.descricao}</span>
+                  <span style={{ display: 'block', color: D.text, fontSize: 14, fontWeight: 700 }}>{f.nome}</span>
+                  <span style={{ display: 'block', color: D.text2, fontSize: 12, marginTop: 2 }}>{f.descricao}</span>
                 </span>
-              )
-              return f.somenteAdmin ? (
-                <div key={f.id} style={{ ...linha, opacity: 0.6 }}>
-                  {texto}
-                  <span style={{ fontSize: 11, fontWeight: 700, color: D.muted, flexShrink: 0 }}>Só admin</span>
-                </div>
-              ) : (
-                <button key={f.id} type="button" role="switch" aria-checked={!!valor[f.id]} disabled={disabled}
-                  onClick={() => onChange({ ...valor, [f.id]: !valor[f.id] })}
-                  style={{ ...linha, cursor: 'pointer' }}>
-                  {texto}
-                  <Toggle ativo={!!valor[f.id]} />
-                </button>
-              )
-            })}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: D.text2, flexShrink: 0 }}><Icon nome="lock" size={14} /> Só admin</span>
+              </div>
+            ) : (
+              <Toggle key={f.id} label={f.nome} descricao={f.descricao} icone={iconeFuncao(f)}
+                ligado={!!valor[f.id]} disabled={disabled}
+                onChange={(ligar) => onChange({ ...valor, [f.id]: ligar })} />
+            ))}
           </div>
         </div>
       ))}
@@ -73,10 +70,12 @@ function resumoPermissoes(u: Usuario): string {
 }
 
 const AVISO_ADMIN = (
-  <p style={{ fontSize: 13, color: D.text2, background: D.input, borderRadius: 10, padding: '10px 14px' }}>👑 Admin vê todas as funções.</p>
+  <p style={{ fontSize: 13, color: D.text2, background: D.input, borderRadius: 12, padding: '12px 14px', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <Icon nome="lock" size={16} /> Admin vê todas as funções.
+  </p>
 )
 
-const inputStyle: React.CSSProperties = { width: '100%', background: D.input, border: `1px solid ${D.border}`, borderRadius: 12, padding: '10px 14px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box' }
+const inputStyle: React.CSSProperties = { width: '100%', background: D.input, border: `1px solid ${D.border}`, borderRadius: 12, padding: '11px 14px', fontSize: 15, color: D.text, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: D.text2, marginBottom: 6 }
 
 export default function AdminUsuarios() {
@@ -163,22 +162,21 @@ export default function AdminUsuarios() {
     } finally { setApagando(false); setConfirmarApagar(null); setSenhaApagar('') }
   }
 
-  const btnPrimary: React.CSSProperties = { background: '#6366F1', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer', flex: 1 }
-  const btnSecondary: React.CSSProperties = { background: 'none', color: D.text2, border: `1px solid ${D.border}`, borderRadius: 12, padding: '10px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 1 }
+  const btnPrimary: React.CSSProperties = { background: '#6366F1', color: '#fff', border: 'none', borderRadius: 14, height: 46, fontSize: 14, fontWeight: 700, cursor: 'pointer', flex: 1, fontFamily: 'inherit' }
+  const btnSecondary: React.CSSProperties = { background: 'none', color: D.text2, border: `1px solid ${D.border}`, borderRadius: 14, height: 46, fontSize: 14, fontWeight: 600, cursor: 'pointer', flex: 1, fontFamily: 'inherit' }
+  const botaoIcone: React.CSSProperties = { width: 40, height: 40, borderRadius: 12, background: D.input, border: `1px solid ${D.border}`, color: D.text2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg }}>
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }}>
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Usuários</h1>
-        <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>Gerencie o acesso da equipe</p>
-      </div>
+    <Page>
+      <PageHeader titulo="Usuários" subtitulo="Acesso da equipe e permissões" />
 
-      <div style={{ padding: '16px', maxWidth: 540, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* Formulário novo usuário */}
-        <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 18, padding: 20 }}>
-          <h2 style={{ color: D.text, fontWeight: 800, fontSize: 16, marginBottom: 16 }}>Novo funcionário</h2>
+        <Card style={{ padding: 16 }}>
+          <h2 style={{ color: D.text, fontWeight: 800, fontSize: 16, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon nome="plus" size={18} /> Novo funcionário
+          </h2>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div><label style={labelStyle}>Nome</label><input type="text" value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome completo" required style={inputStyle} /></div>
             <div><label style={labelStyle}>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="funcionario@email.com" required style={inputStyle} /></div>
@@ -186,10 +184,10 @@ export default function AdminUsuarios() {
 
             <div>
               <label style={labelStyle}>Perfil</label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div role="radiogroup" style={{ display: 'flex', background: D.input, borderRadius: 14, padding: 4, gap: 4 }}>
                 {(['funcionario', 'admin'] as const).map((p) => (
-                  <button key={p} type="button" onClick={() => setPerfil(p)}
-                    style={{ flex: 1, padding: '10px', borderRadius: 12, fontSize: 13, fontWeight: 600, border: `1px solid ${perfil === p ? '#6366F1' : D.border}`, background: perfil === p ? 'rgba(99,102,241,0.15)' : D.input, color: perfil === p ? 'var(--accent-text)' : D.text2, cursor: 'pointer' }}>
+                  <button key={p} type="button" role="radio" aria-checked={perfil === p} onClick={() => setPerfil(p)}
+                    style={{ flex: 1, height: 40, borderRadius: 10, fontSize: 14, fontWeight: 700, border: 'none', background: perfil === p ? '#6366F1' : 'transparent', color: perfil === p ? '#fff' : D.text2, cursor: 'pointer', fontFamily: 'inherit' }}>
                     {p === 'admin' ? 'Admin' : 'Funcionário'}
                   </button>
                 ))}
@@ -203,72 +201,74 @@ export default function AdminUsuarios() {
               </div>
             )}
 
-            {erro && <p style={{ background: 'rgba(239,68,68,0.1)', color: '#F87171', fontSize: 13, padding: '8px 12px', borderRadius: 10, textAlign: 'center' }}>{erro}</p>}
-            {sucesso && <p style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981', fontSize: 13, padding: '8px 12px', borderRadius: 10, textAlign: 'center' }}>{sucesso}</p>}
-            <button type="submit" disabled={salvando} style={{ ...btnPrimary, flex: 'none', padding: '12px', opacity: salvando ? 0.6 : 1 }}>{salvando ? 'Criando...' : 'Criar funcionário'}</button>
+            {erro && <p style={{ background: 'rgba(239,68,68,0.1)', color: '#EF4444', fontSize: 13, fontWeight: 600, padding: '10px 12px', borderRadius: 12, textAlign: 'center', margin: 0 }}>{erro}</p>}
+            {sucesso && <p style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981', fontSize: 13, fontWeight: 600, padding: '10px 12px', borderRadius: 12, textAlign: 'center', margin: 0 }}>{sucesso}</p>}
+            <button type="submit" disabled={salvando} style={{ ...btnPrimary, flex: 'none', opacity: salvando ? 0.6 : 1 }}>{salvando ? 'Criando...' : 'Criar funcionário'}</button>
           </form>
-        </div>
+        </Card>
 
         {/* Lista de usuários */}
         {!loadingLista && (
-          <div>
-            <p style={{ color: D.muted, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10 }}>Equipe ({usuarios.length})</p>
-            {usuarios.map((u) => (
-              <div key={u.id} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: '14px 16px', marginBottom: 8 }}>
-
-                {confirmarApagar === u.id ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <p style={{ color: D.text, fontSize: 14, fontWeight: 600 }}>Apagar <strong>{u.nome}</strong>?</p>
-                    <input type="password" placeholder="Digite a senha para confirmar" value={senhaApagar} onChange={e => setSenhaApagar(e.target.value)}
-                      style={{ ...inputStyle, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }} autoFocus />
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { setConfirmarApagar(null); setSenhaApagar('') }} style={btnSecondary}>Cancelar</button>
-                      <button onClick={() => handleApagar(u.id)} disabled={apagando || senhaApagar !== '2010'}
-                        style={{ ...btnPrimary, background: '#EF4444', opacity: (apagando || senhaApagar !== '2010') ? 0.4 : 1 }}>
-                        {apagando ? '...' : 'Confirmar apagar'}
-                      </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 0 2px' }}>Equipe ({usuarios.length})</p>
+            {usuarios.map((u) => {
+              const admin = u.perfil === 'admin'
+              const inicial = (u.nome.trim()[0] ?? '·').toUpperCase()
+              return (
+                <Card key={u.id} style={{ padding: '14px 16px' }}>
+                  {confirmarApagar === u.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <p style={{ color: D.text, fontSize: 14, fontWeight: 600, margin: 0 }}>Apagar <strong>{u.nome}</strong>?</p>
+                      <input type="password" placeholder="Digite a senha para confirmar" value={senhaApagar} onChange={e => setSenhaApagar(e.target.value)}
+                        style={{ ...inputStyle, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }} autoFocus />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => { setConfirmarApagar(null); setSenhaApagar('') }} style={btnSecondary}>Cancelar</button>
+                        <button onClick={() => handleApagar(u.id)} disabled={apagando || senhaApagar !== '2010'}
+                          style={{ ...btnPrimary, background: '#EF4444', opacity: (apagando || senhaApagar !== '2010') ? 0.4 : 1 }}>
+                          {apagando ? '...' : 'Confirmar apagar'}
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                ) : editandoId === u.id ? (
-                  <div>
-                    <div style={{ marginBottom: 10 }}>
-                      <label style={labelStyle}>Nome</label>
-                      <input style={inputStyle} value={editandoNome} onChange={e => setEditandoNome(e.target.value)} />
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
+                  ) : editandoId === u.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div>
+                        <label style={labelStyle}>Nome</label>
+                        <input style={inputStyle} value={editandoNome} onChange={e => setEditandoNome(e.target.value)} />
+                      </div>
                       {editandoPerfil === 'admin' ? AVISO_ADMIN : (
                         <PainelPermissoes valor={editandoPermissoes} onChange={setEditandoPermissoes} disabled={salvandoPermissoes} />
                       )}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => setEditandoId(null)} style={btnSecondary}>Cancelar</button>
+                        <button onClick={() => salvarPermissoes(u.id)} disabled={salvandoPermissoes} style={{ ...btnPrimary, opacity: salvandoPermissoes ? 0.6 : 1 }}>{salvandoPermissoes ? 'Salvando...' : 'Salvar'}</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => setEditandoId(null)} style={btnSecondary}>Cancelar</button>
-                      <button onClick={() => salvarPermissoes(u.id)} disabled={salvandoPermissoes} style={{ ...btnPrimary, opacity: salvandoPermissoes ? 0.6 : 1 }}>{salvandoPermissoes ? 'Salvando...' : 'Salvar'}</button>
-                    </div>
-                  </div>
 
-                ) : (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <p style={{ color: D.text, fontSize: 14, fontWeight: 700 }}>{u.nome}</p>
-                      <p style={{ color: D.muted, fontSize: 12, marginTop: 2 }}>
-                        {u.perfil === 'admin' ? '👑 Admin' : '👤 Funcionário'} · {resumoPermissoes(u)}
-                      </p>
-                    </div>
+                  ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: u.perfil === 'admin' ? 'rgba(99,102,241,0.15)' : 'rgba(16,185,129,0.15)', color: u.perfil === 'admin' ? 'var(--accent-text)' : '#10B981' }}>
-                        {u.perfil === 'admin' ? 'Admin' : 'Funcionário'}
+                      <span style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 17, fontWeight: 800, background: gradiente(admin ? COR.roxo : COR.azul) }}>
+                        {inicial}
                       </span>
-                      <button onClick={() => abrirEdicao(u)} style={{ background: 'none', border: 'none', color: D.muted, cursor: 'pointer', fontSize: 16 }} title="Editar">✏️</button>
-                      <button onClick={() => { setConfirmarApagar(u.id); setEditandoId(null) }} style={{ background: 'none', border: 'none', color: D.muted, cursor: 'pointer', fontSize: 18 }} title="Apagar">🗑</button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ color: D.text, fontSize: 15, fontWeight: 800, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nome}</p>
+                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: admin ? 'var(--accent-bg)' : 'rgba(16,185,129,0.15)', color: admin ? 'var(--accent-text)' : '#10B981' }}>
+                          {admin ? 'ADMIN' : 'FUNCIONÁRIO'}
+                        </span>
+                        <p style={{ color: D.text2, fontSize: 12, margin: '4px 0 0', lineHeight: 1.35 }}>{resumoPermissoes(u)}</p>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button onClick={() => abrirEdicao(u)} style={botaoIcone} aria-label={`Editar ${u.nome}`} title="Editar"><Icon nome="edit" size={18} /></button>
+                        <button onClick={() => { setConfirmarApagar(u.id); setEditandoId(null) }} style={{ ...botaoIcone, color: '#EF4444' }} aria-label={`Apagar ${u.nome}`} title="Apagar"><Icon nome="trash" size={18} /></button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>
-    </div>
+    </Page>
   )
 }

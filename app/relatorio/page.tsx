@@ -1,7 +1,9 @@
 'use client'
 import { use, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import Link from 'next/link'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import Icon from '@/app/components/ui/Icon'
 
 import { D } from '@/app/lib/theme'
 import { FUNCOES, podeAcessar, type Permissoes } from '@/app/lib/permissoes'
@@ -47,22 +49,20 @@ export default function Relatorio({ searchParams }: { searchParams: Promise<{ [k
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg, overflowX: 'hidden' }}>
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }} className="print:hidden">
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Relatórios</h1>
-        <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>Resumo do estoque, consumo e movimentações</p>
+    <Page>
+      <div className="print:hidden">
+        <PageHeader titulo="Relatórios" subtitulo="Estoque, consumo e movimentações" />
       </div>
 
-      <div style={{ padding: '16px', maxWidth: 640, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {liberadas && liberadas.length > 1 && (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${liberadas.length}, minmax(0, 1fr))`, gap: 4, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: 4 }} className="print:hidden">
+          <div role="tablist" style={{ display: 'grid', gridTemplateColumns: `repeat(${liberadas.length}, minmax(0, 1fr))`, gap: 4, background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: 4 }} className="print:hidden">
             {ABAS.filter((a) => liberadas.includes(a.id)).map((a) => {
               const ativa = aba === a.id
               return (
-                <button key={a.id} onClick={() => trocarAba(a.id)}
-                  style={{ padding: '10px 8px', borderRadius: 10, border: 'none', background: ativa ? '#6366F1' : 'transparent', color: ativa ? '#fff' : D.text2, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  {a.label}
+                <button key={a.id} role="tab" aria-selected={ativa} onClick={() => trocarAba(a.id)}
+                  style={{ padding: '10px 8px', borderRadius: 12, border: 'none', background: ativa ? '#6366F1' : 'transparent', color: ativa ? '#fff' : D.text2, fontSize: 14, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
+                  <Icon nome={a.id === 'resumo' ? 'list' : 'barChart'} size={16} /> {a.label}
                 </button>
               )
             })}
@@ -79,6 +79,6 @@ export default function Relatorio({ searchParams }: { searchParams: Promise<{ [k
           <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', padding: '48px 0' }}>Sem acesso aos relatórios.</p>
         )}
       </div>
-    </div>
+    </Page>
   )
 }

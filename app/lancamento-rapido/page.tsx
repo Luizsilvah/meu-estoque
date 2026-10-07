@@ -10,7 +10,10 @@
 // se perder se o app fechar no meio do dia. As escolhas feitas em "QUAL?"
 // também ficam salvas ("leite" → Leite líquido) e valem nas próximas vezes.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 
 import { D } from '@/app/lib/theme'
 import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
@@ -364,7 +367,7 @@ export default function LancamentoRapido() {
         return r && !r.ok ? { ...i, erro: r.erro ?? 'Erro' } : i
       }))
       setAviso({
-        msg: (okCount ? `✓ ${okCount} ${okCount === 1 ? 'lançado' : 'lançados'}` : 'Nada lançado') + (erros ? ` · ${erros} com erro (ficaram na lista)` : ''),
+        msg: (okCount ? `${okCount} ${okCount === 1 ? 'lançado' : 'lançados'}` : 'Nada lançado') + (erros ? ` · ${erros} com erro (ficaram na lista)` : ''),
         ok: erros === 0,
       })
       if (okCount) {
@@ -423,44 +426,33 @@ export default function LancamentoRapido() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg, overflowX: 'hidden' }}>
-      {/* Header */}
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 18px' }}>
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(135deg, ${ACCENT}, #8B5CF6)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
-            </svg>
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <h1 style={{ color: D.text, fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Lançamento rápido</h1>
-            <p style={{ color: D.muted, fontSize: 13, margin: '2px 0 0' }}>Anota durante o dia, lança tudo de uma vez</p>
-          </div>
-        </div>
-      </div>
+    <Page>
+      <PageHeader titulo="Lançamento rápido" subtitulo="Anota durante o dia, lança tudo de uma vez" />
 
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '16px 16px calc(120px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {erroCarga && <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>{erroCarga}</p>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {erroCarga && <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: 0 }}>{erroCarga}</p>}
         {!perm.mov && !perm.transf && !erroCarga && (
-          <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>Você não tem permissão de Movimentação nem de Transferência.</p>
+          <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: 0 }}>Você não tem permissão de Movimentação nem de Transferência.</p>
         )}
 
         {lista.length === 0 ? (
-          <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 18, padding: 18 }}>
-            <p style={{ color: D.text, fontSize: 15, fontWeight: 700, margin: '0 0 6px' }}>Nada anotado ainda</p>
+          <Card style={{ padding: 18 }}>
+            <span style={{ width: 48, height: 48, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent-text)', marginBottom: 12 }}>
+              <Icon nome="zap" size={24} />
+            </span>
+            <p style={{ color: D.text, fontSize: 16, fontWeight: 800, margin: '0 0 6px' }}>Nada anotado ainda</p>
             <p style={{ color: D.text2, fontSize: 13, margin: '0 0 12px', lineHeight: 1.45 }}>
               Escreva embaixo do jeito que falaria (dá pra usar o microfone do teclado). Nada é salvo no estoque antes de você tocar em <b>Lançar tudo</b>.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {EXEMPLOS.slice(0, 3).map((e) => (
                 <button key={e.texto} type="button" onClick={() => { setTexto(e.texto); textoRef.current?.focus() }}
-                  style={{ textAlign: 'left', padding: '8px 12px', borderRadius: 12, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 13, cursor: 'pointer' }}>
+                  style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 12, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
                   “{e.texto}”
                 </button>
               ))}
             </div>
-          </div>
+          </Card>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <p style={{ color: D.text2, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
@@ -489,23 +481,23 @@ export default function LancamentoRapido() {
         ))}
 
         <button type="button" onClick={() => abrirEditor()}
-          style={{ padding: '12px 16px', borderRadius: 16, border: `1px dashed ${ACCENT}`, background: 'rgba(99,102,241,0.08)', color: ACCENT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-          + adicionar item
+          style={{ height: 46, borderRadius: 14, border: `1px dashed ${ACCENT}`, background: 'var(--accent-bg)', color: 'var(--accent-text)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
+          <Icon nome="plus" size={18} /> Adicionar item
         </button>
 
         {aviso && (
-          <p style={{ margin: 0, padding: '10px 14px', borderRadius: 12, fontSize: 13, fontWeight: 600,
+          <p style={{ margin: 0, padding: '10px 14px', borderRadius: 12, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'flex-start', gap: 6,
             background: aviso.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: aviso.ok ? '#10B981' : '#EF4444' }}>
-            {aviso.msg}
+            <Icon nome={aviso.ok ? 'tick' : 'alert'} size={16} /> {aviso.msg}
           </p>
         )}
 
         {lista.length > 0 && (
           <>
             <button type="button" onClick={lancarTudo} disabled={!completos || lancando}
-              style={{ padding: '15px', borderRadius: 16, border: 'none', background: 'linear-gradient(135deg, #10B981, #059669)', color: '#fff', fontSize: 16, fontWeight: 800,
-                cursor: completos && !lancando ? 'pointer' : 'not-allowed', opacity: completos && !lancando ? 1 : 0.5 }}>
-              {lancando ? 'Lançando...' : `Lançar tudo (${lista.length})`}
+              style={{ height: 52, borderRadius: 16, border: 'none', background: 'linear-gradient(135deg, #10B981, #059669)', color: '#fff', fontSize: 16, fontWeight: 800, fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: completos && !lancando ? 'pointer' : 'not-allowed', opacity: completos && !lancando ? 1 : 0.5 }}>
+              <Icon nome="tick" size={20} traco={2.6} /> {lancando ? 'Lançando...' : `Lançar tudo (${lista.length})`}
             </button>
             {!completos && (
               <p style={{ color: AMARELO, fontSize: 12, fontWeight: 600, textAlign: 'center', margin: 0 }}>
@@ -514,12 +506,15 @@ export default function LancamentoRapido() {
             )}
           </>
         )}
+
+        {/* Espaço da caixa de texto fixa logo abaixo (só a altura dela) */}
+        <div aria-hidden style={{ height: 72 }} />
       </div>
 
       {/* ── Caixa de texto ── */}
       <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'var(--bottomnav-topo, 0px)', zIndex: 40, background: D.card, borderTop: `1px solid ${D.border}`, padding: '10px 12px calc(10px + var(--bottomnav-safe, env(safe-area-inset-bottom)))' }}>
         <form onSubmit={(e) => { e.preventDefault(); enviarTexto() }}
-          style={{ maxWidth: 560, margin: '0 auto', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+          style={{ maxWidth: 456, margin: '0 auto', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
           <button type="button" aria-label="Como escrever" onClick={() => setAjudaAberta(true)}
             style={{ ...botaoRedondo, background: D.input, color: D.text2, border: `1px solid ${D.border}`, fontSize: 18, fontWeight: 800 }}>
             ?
@@ -530,9 +525,7 @@ export default function LancamentoRapido() {
             style={{ flex: 1, minWidth: 0, resize: 'none', background: D.input, border: `1px solid ${D.border}`, borderRadius: 22, padding: '11px 16px', fontSize: 16, color: D.text, outline: 'none', fontFamily: 'inherit', lineHeight: 1.35 }} />
           <button type="submit" aria-label="Enviar" disabled={!texto.trim()}
             style={{ ...botaoRedondo, background: ACCENT, color: '#fff', border: 'none', opacity: texto.trim() ? 1 : 0.5 }}>
-            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
+            <Icon nome="send" size={20} traco={2.2} />
           </button>
         </form>
       </div>
@@ -586,7 +579,7 @@ export default function LancamentoRapido() {
           }}
         />
       )}
-    </div>
+    </Page>
   )
 }
 
@@ -621,7 +614,7 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
   else selo = { texto: '?', cor: AMARELO }
 
   return (
-    <div style={{ background: fundo, border: `1px solid ${borda}`, borderRadius: 18, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+    <Card style={{ background: fundo, borderColor: borda, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       {/* Linha 1: selo, produto, quantidade */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', padding: '3px 7px', borderRadius: 7, color: selo.cor, background: `color-mix(in srgb, ${selo.cor} 16%, transparent)` }}>
@@ -630,8 +623,8 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
         <span style={{ flex: 1, minWidth: 0, color: D.text, fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {nome ?? `“${item.termo || item.texto_original || 'produto'}”`}
         </span>
-        <span style={{ flexShrink: 0, color: vis?.cor ?? D.text, fontSize: 16, fontWeight: 800 }}>
-          {vis?.sinal}{item.quantidade}{un && <span style={{ fontSize: 11, fontWeight: 600, color: D.text2 }}> {un}</span>}
+        <span style={{ flexShrink: 0, color: vis?.cor ?? D.text, fontSize: 24, fontWeight: 800, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          {vis?.sinal}{item.quantidade}{un && <span style={{ fontSize: 11, fontWeight: 700, color: D.text2 }}> {un}</span>}
         </span>
       </div>
 
@@ -685,7 +678,7 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
           <Detalhes item={item} analise={analise} />
         </div>
         <button type="button" onClick={onEditar} style={{ ...botaoLink, color: 'var(--accent-text)' }}>editar</button>
-        <button type="button" aria-label="Remover item" onClick={onRemover} style={{ ...botaoLink, color: D.text2, fontSize: 15 }}>✕</button>
+        <button type="button" aria-label="Remover item" onClick={onRemover} style={{ ...botaoLink, color: D.text2, display: 'flex', padding: 6 }}><Icon nome="close" size={16} /></button>
       </div>
 
       {item.texto_original && (
@@ -693,9 +686,9 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
           “{item.texto_original}”
         </p>
       )}
-      {analise.aviso && <p style={{ margin: 0, color: '#F97316', fontSize: 12, fontWeight: 600 }}>⚠️ {analise.aviso}</p>}
-      {item.erro && <p style={{ margin: 0, color: '#EF4444', fontSize: 12, fontWeight: 700 }}>✕ {item.erro}</p>}
-    </div>
+      {analise.aviso && <p style={{ margin: 0, color: '#F97316', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {analise.aviso}</p>}
+      {item.erro && <p style={{ margin: 0, color: '#EF4444', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {item.erro}</p>}
+    </Card>
   )
 }
 
@@ -822,11 +815,11 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
       <div>
         <label style={rotulo}>Quantidade</label>
         <div style={{ display: 'grid', gridTemplateColumns: '48px minmax(0, 1fr) 48px', gap: 8 }}>
-          <button type="button" onClick={() => onMudar({ quantidade: Math.max(1, item.quantidade - 1) })} style={botaoQtd}>−</button>
+          <button type="button" onClick={() => onMudar({ quantidade: Math.max(1, item.quantidade - 1) })} style={botaoQtd} aria-label="Diminuir"><Icon nome="minus" size={18} traco={2.6} /></button>
           <input type="number" min="1" step="1" inputMode="numeric" value={Number.isFinite(item.quantidade) && item.quantidade > 0 ? item.quantidade : ''}
             onChange={(e) => onMudar({ quantidade: Math.floor(Number(e.target.value)) })}
             style={{ ...campo, textAlign: 'center', fontWeight: 800, fontSize: 18 }} />
-          <button type="button" onClick={() => onMudar({ quantidade: (item.quantidade || 0) + 1 })} style={botaoQtd}>+</button>
+          <button type="button" onClick={() => onMudar({ quantidade: (item.quantidade || 0) + 1 })} style={botaoQtd} aria-label="Aumentar"><Icon nome="plus" size={18} traco={2.6} /></button>
         </div>
       </div>
 
@@ -874,7 +867,7 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
         </div>
       )}
 
-      {analise.aviso && <p style={{ margin: 0, color: '#F97316', fontSize: 12, fontWeight: 600 }}>⚠️ {analise.aviso}</p>}
+      {analise.aviso && <p style={{ margin: 0, color: '#F97316', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {analise.aviso}</p>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, marginTop: 4 }}>
         <button type="button" onClick={onCancelar}
@@ -937,4 +930,5 @@ const botaoRedondo: React.CSSProperties = {
 }
 const botaoQtd: React.CSSProperties = {
   height: 46, borderRadius: 12, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 20, fontWeight: 700, cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
 }

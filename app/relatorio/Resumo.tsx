@@ -2,6 +2,17 @@
 import { useEffect, useState } from 'react'
 
 import { D } from '@/app/lib/theme'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
+
+const botaoMes: React.CSSProperties = {
+  width: 42, height: 42, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: D.text,
+  background: D.input, border: `1px solid ${D.border}`, cursor: 'pointer', padding: 0,
+}
+const botaoAcao: React.CSSProperties = {
+  height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+  fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+}
 
 // Aba "Resumo" de /relatorio (conteúdo da antiga página Relatório).
 
@@ -124,27 +135,31 @@ export default function AbaResumo() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* Ações */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }} className="print:hidden">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }} className="print:hidden">
           <button onClick={() => window.print()}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 12, color: D.text, fontSize: 12, fontWeight: 600, background: D.card, border: `1px solid ${D.border}`, cursor: 'pointer' }}>
-            🖨️ Imprimir
+            style={{ ...botaoAcao, color: D.text, background: D.card, border: `1px solid ${D.border}` }}>
+            <Icon nome="printer" size={18} /> Imprimir
           </button>
           <button onClick={() => exportarExcel(estoque, movPorProduto, mes, ano)} disabled={loading || estoque.length === 0}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 12, color: '#fff', fontSize: 12, fontWeight: 700, background: '#10B981', border: 'none', cursor: 'pointer', opacity: (loading || estoque.length === 0) ? 0.4 : 1 }}>
-            📥 Excel
+            style={{ ...botaoAcao, color: '#fff', background: '#10B981', border: 'none', opacity: (loading || estoque.length === 0) ? 0.4 : 1 }}>
+            <Icon nome="download" size={18} /> Exportar Excel
           </button>
         </div>
 
         {/* Navegação mês */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: '12px 16px' }} className="print:hidden">
-          <button onClick={() => navMes(-1)}
-            style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: D.text2, fontWeight: 700, fontSize: 20, background: 'none', border: 'none', cursor: 'pointer' }}>‹</button>
+        <div className="print:hidden">
+        <Card style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px' }}>
+          <button onClick={() => navMes(-1)} aria-label="Mês anterior" style={botaoMes}>
+            <Icon nome="back" size={20} />
+          </button>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ color: D.text, fontWeight: 600 }}>{nomeMes(mes, ano)}</p>
+            <p style={{ color: D.text, fontWeight: 800, fontSize: 15, margin: 0 }}>{nomeMes(mes, ano)}</p>
             {ehMesAtual && <p style={{ fontSize: 11, color: 'var(--accent-text)', fontWeight: 600, marginTop: 2 }}>Mês atual</p>}
           </div>
-          <button onClick={() => navMes(+1)} disabled={ehMesAtual}
-            style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: D.text2, fontWeight: 700, fontSize: 20, background: 'none', border: 'none', cursor: 'pointer', opacity: ehMesAtual ? 0.3 : 1 }}>›</button>
+          <button onClick={() => navMes(+1)} disabled={ehMesAtual} aria-label="Próximo mês" style={{ ...botaoMes, opacity: ehMesAtual ? 0.3 : 1 }}>
+            <Icon nome="chevron" size={20} />
+          </button>
+        </Card>
         </div>
 
         <p className="hidden print:block" style={{ fontSize: 13, fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '1px' }}>{nomeMes(mes, ano)}</p>
@@ -300,13 +315,6 @@ export default function AbaResumo() {
         )}
       </div>
 
-      {/* Botão flutuante Excel */}
-      <div style={{ position: 'fixed', bottom: 16, right: 16 }} className="print:hidden">
-        <button onClick={() => exportarExcel(estoque, movPorProduto, mes, ano)} disabled={loading || estoque.length === 0}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderRadius: 16, background: '#10B981', color: '#fff', border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', opacity: (loading || estoque.length === 0) ? 0.4 : 1 }}>
-          📥 Exportar Excel
-        </button>
-      </div>
     </>
   )
 }

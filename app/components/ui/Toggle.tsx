@@ -1,12 +1,14 @@
 import { D } from '@/app/lib/theme'
 
 /** Linha com rótulo + descrição à esquerda e chave liga/desliga à direita. */
-export default function Toggle({ label, descricao, ligado, onChange, disabled }: {
+export default function Toggle({ label, descricao, ligado, onChange, disabled, icone }: {
   label: string
   descricao?: React.ReactNode
   ligado: boolean
   onChange: (ligado: boolean) => void
   disabled?: boolean
+  /** Ícone opcional à esquerda do rótulo */
+  icone?: React.ReactNode
 }) {
   return (
     <button
@@ -18,6 +20,7 @@ export default function Toggle({ label, descricao, ligado, onChange, disabled }:
         textAlign: 'left', fontFamily: 'inherit', opacity: disabled ? 0.6 : 1, boxSizing: 'border-box',
       }}
     >
+      {icone}
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', color: D.text, fontSize: 14, fontWeight: 700 }}>{label}</span>
         {descricao && <span style={{ display: 'block', color: D.text2, fontSize: 12, marginTop: 2, lineHeight: 1.35 }}>{descricao}</span>}

@@ -3,6 +3,10 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { D } from '@/app/lib/theme'
 import BarcodeCameraButton from '@/app/components/BarcodeCameraButton'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 import { invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 import ModalLotes, { type LoteAdd, type LoteRemover } from '@/app/components/ModalLotes'
 import { controlaValidade, type Validade } from '@/app/lib/validades'
@@ -26,7 +30,7 @@ type ModalLotesMov = { produto: Produto; tipo: 'entrada' | 'saida'; quantidade: 
 
 const ENTRADA = '#16A34A'
 const SAIDA   = '#DC2626'
-const HEADER  = '#1A3C5E'
+const ACCENT  = '#6366F1'
 
 export default function Scanner() {
   const router = useRouter()
@@ -164,127 +168,111 @@ export default function Scanner() {
   const btnBase: React.CSSProperties = {
     border: 'none', cursor: 'pointer', fontFamily: 'inherit',
   }
+  const botaoGrande: React.CSSProperties = {
+    ...btnBase, width: '100%', height: 52, borderRadius: 14, color: '#fff', fontSize: 15, fontWeight: 800,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+  }
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg }}>
+    <Page>
+      <PageHeader titulo="Scanner" subtitulo="Aponte para o código de barras do produto" onVoltar={() => router.back()} />
 
-      {/* Header */}
-      <div style={{ background: HEADER, padding: '40px 20px 24px' }}>
-        <button
-          onClick={() => router.back()}
-          style={{ ...btnBase, background: 'none', color: '#93C5FD', fontSize: 12, marginBottom: 12, display: 'block', padding: 0 }}
-        >
-          ← Voltar
-        </button>
-        <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>
-          Scanner
-        </h1>
-        <p style={{ color: '#BFDBFE', fontSize: 13, marginTop: 4, marginBottom: 0 }}>
-          Aponte para o código de barras do produto
-        </p>
-      </div>
-
-      <div style={{ maxWidth: 448, margin: '0 auto', padding: '24px 16px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Buscando */}
         {buscando && (
-          <div style={{ textAlign: 'center', padding: '56px 0' }}>
-            <p style={{ color: D.text2, fontSize: 14 }}>Buscando produto...</p>
-          </div>
+          <Card style={{ padding: '48px 20px', textAlign: 'center' }}>
+            <span className="animate-pulse" style={{ display: 'inline-flex', color: 'var(--accent-text)' }}><Icon nome="search" size={36} /></span>
+            <p style={{ color: D.text2, fontSize: 14, margin: '10px 0 0' }}>Buscando produto...</p>
+          </Card>
         )}
 
         {/* Não encontrado */}
         {naoEncontrado && !buscando && (
-          <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: '28px 24px', textAlign: 'center' }}>
-            <p style={{ color: D.text, fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
+          <Card style={{ padding: '28px 20px', textAlign: 'center' }}>
+            <span style={{ width: 64, height: 64, borderRadius: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}>
+              <Icon nome="alert" size={30} />
+            </span>
+            <p style={{ color: D.text, fontWeight: 800, fontSize: 16, margin: '14px 0 6px' }}>
               Produto não encontrado
             </p>
-            <p style={{ color: D.text2, fontSize: 13, marginBottom: 24 }}>
+            <p style={{ color: D.text2, fontSize: 13, margin: '0 0 20px' }}>
               Código não cadastrado ou sem campo código de barras
             </p>
             <BarcodeCameraButton
               onScanned={onScanned}
               instanceId="scanner-page"
               renderTrigger={(abrir) => (
-                <button
-                  onClick={abrir}
-                  style={{ ...btnBase, background: HEADER, color: '#fff', borderRadius: 12, padding: '12px 28px', fontSize: 14, fontWeight: 600 }}
-                >
-                  Escanear novamente
+                <button onClick={abrir} style={{ ...botaoGrande, background: ACCENT }}>
+                  <Icon nome="scan" size={20} /> Escanear novamente
                 </button>
               )}
             />
-          </div>
+          </Card>
         )}
 
         {/* Idle — estado inicial */}
         {!buscando && !produto && !naoEncontrado && (
-          <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: '44px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: 52, marginBottom: 16 }}>🔍</div>
-            <p style={{ color: D.text, fontWeight: 600, fontSize: 15, marginBottom: 8 }}>
+          <Card style={{ padding: '36px 20px', textAlign: 'center' }}>
+            <span style={{ width: 80, height: 80, borderRadius: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent-text)' }}>
+              <Icon nome="scan" size={40} />
+            </span>
+            <p style={{ color: D.text, fontWeight: 800, fontSize: 17, margin: '16px 0 6px' }}>
               Pronto para escanear
             </p>
-            <p style={{ color: D.text2, fontSize: 13, marginBottom: 28 }}>
+            <p style={{ color: D.text2, fontSize: 13, margin: '0 0 24px' }}>
               Toque no botão abaixo para abrir a câmera
             </p>
             <BarcodeCameraButton
               onScanned={onScanned}
               instanceId="scanner-page"
               renderTrigger={(abrir) => (
-                <button
-                  onClick={abrir}
-                  style={{ ...btnBase, background: HEADER, color: '#fff', borderRadius: 12, padding: '14px 32px', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}
-                >
-                  📷 Abrir câmera
+                <button onClick={abrir} style={{ ...botaoGrande, background: ACCENT }}>
+                  <Icon nome="camera" size={20} /> Abrir câmera
                 </button>
               )}
             />
-          </div>
+          </Card>
         )}
 
         {/* Produto encontrado */}
         {produto && !buscando && (
           <>
-            <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: '16px 20px', marginBottom: 12 }}>
-              <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 2 }}>
-                {produto.nome}
-              </p>
-              <p style={{ color: D.text2, fontSize: 12, marginBottom: 14 }}>
-                {produto.fornecedor_nome ?? '—'} · {produto.unidade}
-              </p>
-              <p style={{ fontSize: 30, fontWeight: 700, color: precisaPedir ? SAIDA : ENTRADA, marginBottom: 4 }}>
-                {produto.qtd_atual}
-                <span style={{ fontSize: 13, fontWeight: 400, color: D.text2, marginLeft: 6 }}>
-                  em estoque
-                </span>
-              </p>
-              {precisaPedir && (
-                <span style={{ display: 'inline-block', background: 'rgba(220,38,38,0.10)', color: SAIDA, border: '1px solid rgba(220,38,38,0.25)', borderRadius: 20, fontSize: 11, fontWeight: 600, padding: '2px 10px', marginTop: 2 }}>
-                  Pedir {produto.qtd_max - produto.qtd_atual} {produto.unidade}
-                </span>
-              )}
-            </div>
+            <Card style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px' }}>
+              <span style={{ width: 52, height: 52, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: D.input, color: D.text2 }}>
+                <Icon nome="box" size={24} traco={1.8} />
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ color: D.text, fontWeight: 800, fontSize: 16, margin: 0, overflowWrap: 'anywhere' }}>
+                  {produto.nome}
+                </p>
+                <p style={{ color: D.text2, fontSize: 13, margin: '3px 0 0' }}>
+                  {produto.fornecedor_nome ?? '—'} · {produto.unidade}
+                </p>
+                {precisaPedir && (
+                  <span style={{ display: 'inline-block', marginTop: 6, fontSize: 11, fontWeight: 800, letterSpacing: '0.3px', padding: '2px 7px', borderRadius: 6, background: 'rgba(239,68,68,0.15)', color: SAIDA }}>
+                    PEDIR {produto.qtd_max - produto.qtd_atual} {produto.unidade}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+                <span style={{ fontSize: 34, fontWeight: 800, lineHeight: 1, color: precisaPedir ? SAIDA : ENTRADA, fontVariantNumeric: 'tabular-nums' }}>{produto.qtd_atual}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: D.text2, marginTop: 3 }}>em estoque</span>
+              </div>
+            </Card>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-              <button
-                onClick={() => abrirModal('entrada')}
-                style={{ ...btnBase, background: ENTRADA, color: '#fff', borderRadius: 14, padding: '16px 0', fontSize: 14, fontWeight: 700 }}
-              >
-                + Entrada
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button onClick={() => abrirModal('saida')} style={{ ...botaoGrande, background: 'rgba(239,68,68,0.15)', color: SAIDA }}>
+                <Icon nome="minus" size={20} traco={2.6} /> Saída
               </button>
-              <button
-                onClick={() => abrirModal('saida')}
-                style={{ ...btnBase, background: SAIDA, color: '#fff', borderRadius: 14, padding: '16px 0', fontSize: 14, fontWeight: 700 }}
-              >
-                − Saída
+              <button onClick={() => abrirModal('entrada')} style={{ ...botaoGrande, background: 'rgba(16,185,129,0.15)', color: ENTRADA }}>
+                <Icon nome="plus" size={20} traco={2.6} /> Entrada
               </button>
             </div>
 
-            <button
-              onClick={reiniciar}
-              style={{ ...btnBase, width: '100%', background: D.card, color: D.text2, border: `1px solid ${D.border}`, borderRadius: 14, padding: '13px 0', fontSize: 13, fontWeight: 600 }}
-            >
-              Escanear outro produto
+            <button onClick={reiniciar}
+              style={{ ...botaoGrande, background: D.card, color: D.text2, border: `1px solid ${D.border}` }}>
+              <Icon nome="scan" size={20} /> Escanear outro produto
             </button>
           </>
         )}
@@ -293,20 +281,20 @@ export default function Scanner() {
       {/* Modal de movimentação */}
       {modal && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 60 }}
           onClick={(e) => { if (e.target === e.currentTarget) fecharModal() }}
         >
-          <div style={{ width: '100%', maxWidth: 448, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', boxShadow: '0 -4px 30px rgba(0,0,0,0.15)' }}>
+          <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 20px calc(32px + env(safe-area-inset-bottom))', boxSizing: 'border-box', boxShadow: '0 -4px 30px rgba(0,0,0,0.25)' }}>
             <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
               <div style={{
-                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                width: 32, height: 32, borderRadius: 10, flexShrink: 0,
                 background: modal.tipo === 'entrada' ? ENTRADA : SAIDA,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fff', fontWeight: 700, fontSize: 18,
+                color: '#fff',
               }}>
-                {modal.tipo === 'entrada' ? '+' : '−'}
+                <Icon nome={modal.tipo === 'entrada' ? 'plus' : 'minus'} size={18} traco={2.8} />
               </div>
               <div>
                 <p style={{ color: D.text2, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, marginBottom: 1 }}>
@@ -361,8 +349,8 @@ export default function Scanner() {
               style={{
                 ...btnBase, width: '100%',
                 background: modal.tipo === 'entrada' ? ENTRADA : SAIDA,
-                color: '#fff', borderRadius: 14, padding: '16px 0',
-                fontSize: 15, fontWeight: 700,
+                color: '#fff', borderRadius: 14, height: 52,
+                fontSize: 15, fontWeight: 800,
                 opacity: salvando || !quantidade || Number(quantidade) <= 0 ? 0.4 : 1,
                 cursor: salvando || !quantidade || Number(quantidade) <= 0 ? 'not-allowed' : 'pointer',
               }}
@@ -396,6 +384,6 @@ export default function Scanner() {
           onConfirmar={registrar}
         />
       )}
-    </div>
+    </Page>
   )
 }
