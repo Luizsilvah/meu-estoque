@@ -1,6 +1,10 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import SearchBar from '@/app/components/ui/SearchBar'
+import Card, { CARD_THUMB } from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
@@ -55,6 +59,10 @@ const inputStyle: React.CSSProperties = {
   padding: '10px 14px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box',
 }
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: D.text2, marginBottom: 4, marginLeft: 2 }
+const botaoMotivo: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`,
+  background: D.input, color: D.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+}
 
 export default function Conferencia() {
   const [dados, setDados] = useState<Item[]>([])
@@ -367,32 +375,22 @@ export default function Conferencia() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg }}>
+    <Page>
 
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }}>
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Conferência</h1>
-        <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>{itensFiltrados.length} itens · {conferidos.size} conferidos</p>
-      </div>
+      <PageHeader
+        titulo="Conferência"
+        subtitulo={`${itensFiltrados.length} itens · ${conferidos.size} conferido${conferidos.size === 1 ? '' : 's'}`}
+        acao={conferidos.size > 0 ? (
+          <button onClick={() => setConferidos(new Set())}
+            style={{ flexShrink: 0, height: 44, padding: '0 14px', borderRadius: 14, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', color: '#10B981', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+            Limpar ({conferidos.size})
+          </button>
+        ) : undefined}
+      />
 
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* Busca + Limpar */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: D.muted }}>🔍</span>
-            <input type="text" placeholder="Buscar produto..."
-              value={busca} onChange={(e) => setBusca(e.target.value)}
-              style={{ width: '100%', background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: '12px 14px 12px 36px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box' }}
-            />
-          </div>
-          {conferidos.size > 0 && (
-            <button onClick={() => setConferidos(new Set())}
-              style={{ flexShrink: 0, padding: '12px 14px', borderRadius: 14, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10B981', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              Limpar ({conferidos.size})
-            </button>
-          )}
-        </div>
+        <SearchBar value={busca} onChange={setBusca} placeholder="Buscar produto..." />
 
         {/* Cards */}
         {itensFiltrados.length === 0 ? (
@@ -406,9 +404,12 @@ export default function Conferencia() {
           const conferido = conferidos.has(item.id)
 
           return (
-            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Card key={item.id} style={{
+              display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 6,
+              ...(conferido ? { background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.35)' } : {}),
+            }}>
               {/* Checkbox */}
-              <div
+              <button
                 onClick={() => setConferidos((prev) => {
                   const next = new Set(prev)
                   if (next.has(item.id)) next.delete(item.id)
@@ -417,78 +418,69 @@ export default function Conferencia() {
                 })}
                 role="checkbox"
                 aria-checked={conferido}
-                style={{
-                  width: 24, height: 24, minWidth: 24, borderRadius: 7,
+                aria-label={conferido ? 'Desmarcar conferido' : 'Marcar como conferido'}
+                style={{ alignSelf: 'stretch', width: 44, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                <span style={{
+                  width: 26, height: 26, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   border: conferido ? '2px solid #10B981' : `2px solid ${D.border}`,
-                  background: conferido ? '#10B981' : 'transparent',
-                  flexShrink: 0, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: conferido ? '#10B981' : 'transparent', color: '#fff',
                   transition: 'background 0.15s, border-color 0.15s',
                 }}>
-                {conferido && <span style={{ color: '#fff', fontSize: 13, fontWeight: 900, lineHeight: 1 }}>✓</span>}
-              </div>
+                  {conferido && <Icon nome="tick" size={16} traco={3} />}
+                </span>
+              </button>
 
               {/* Card */}
               <button onClick={() => abrirEditar(item)}
-                style={{ background: conferido ? 'rgba(16,185,129,0.08)' : D.card, border: conferido ? '1px solid rgba(16,185,129,0.3)' : `1px solid ${D.border}`, borderRadius: 16, padding: '14px', flex: 1, textAlign: 'left', cursor: 'pointer', transition: 'background 0.15s, border-color 0.15s' }}>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                  <FotoThumb src={item.produtos?.foto_url ?? null} style={{ marginRight: 10, marginTop: 1 }} />
-                  <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-                    <p style={{ color: conferido ? '#10B981' : D.text, fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.produtos?.nome ?? '—'}
-                    </p>
-                    <p style={{ color: D.text2, fontSize: 12, marginTop: 2 }}>
+                style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px 14px 4px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <FotoThumb src={item.produtos?.foto_url ?? null} size={CARD_THUMB} radius={14} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: conferido ? '#10B981' : D.text, fontWeight: 800, fontSize: 16, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.produtos?.nome ?? '—'}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
+                    <span style={{ color: D.text2, fontSize: 13, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.produtos?.fornecedores?.nome ?? '—'} · {item.produtos?.unidade}
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    </span>
                     {precisaPedir && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
-                        Pedir
+                      <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.3px', padding: '2px 7px', borderRadius: 6, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
+                        PEDIR
                       </span>
                     )}
                   </div>
-                </div>
-
-                {/* Stats */}
-                <div style={{ display: 'flex', gap: 0, background: D.input, borderRadius: 12, overflow: 'hidden' }}>
-                  {[
-                    { label: '🏪 Principal', value: qtdPrincipal },
-                    { label: '🍳 Cozinha', value: item.qtd_cozinha ?? 0 },
-                    { label: 'Total', value: item.qtd_atual },
-                  ].map((stat, i) => (
-                    <div key={i} style={{ flex: 1, padding: '8px 10px', textAlign: 'center', borderRight: i < 2 ? `1px solid ${D.border}` : 'none' }}>
-                      <p style={{ fontSize: 10, color: D.muted, fontWeight: 600, marginBottom: 2 }}>{stat.label}</p>
-                      <p style={{ fontSize: 18, fontWeight: 800, color: i === 2 && precisaPedir ? '#EF4444' : D.text }}>{stat.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Validade */}
-                {proxVal && (
-                  <p style={{ fontSize: 11, color: proxVal.cor, marginTop: 8, fontWeight: 600 }}>
-                    📅 Val: {proxVal.texto}
+                  <p style={{ color: D.text2, fontSize: 13, margin: '3px 0 0' }}>
+                    Principal <strong style={{ color: D.text }}>{qtdPrincipal}</strong>
+                    <span style={{ display: 'inline-block', width: 12 }} />
+                    Cozinha <strong style={{ color: D.text }}>{item.qtd_cozinha ?? 0}</strong>
                   </p>
-                )}
+                  {proxVal && (
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 6, color: proxVal.cor, fontSize: 13, margin: '4px 0 0' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
+                      {/^\d/.test(proxVal.texto) ? 'Val. ' + proxVal.texto : proxVal.texto}
+                    </p>
+                  )}
+                </div>
+                <span style={{ fontSize: 34, fontWeight: 800, lineHeight: 1, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: precisaPedir ? '#EF4444' : conferido ? '#10B981' : D.text }}>
+                  {item.qtd_atual}
+                </span>
               </button>
-            </div>
+            </Card>
           )
         })}
       </div>
 
       {/* Rodapé admin — zerar estoque */}
       {isAdmin && (
-        <div style={{ padding: '8px 16px 40px', borderTop: `1px solid ${D.border}`, marginTop: 8 }}>
+        <div style={{ paddingTop: 16, marginTop: 16, borderTop: `1px solid ${D.border}` }}>
           {!mostrarZerar ? (
             <button onClick={() => { setMostrarZerar(true); setSenhaZerar(''); setErroZerar('') }}
-              style={{ width: '100%', padding: '13px', borderRadius: 16, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#EF4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              Zerar todo o estoque
+              style={{ width: '100%', padding: '13px', borderRadius: 16, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#EF4444', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Icon nome="trash" size={16} /> Zerar todo o estoque
             </button>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, textAlign: 'center', margin: 0 }}>
-                ⚠️ Esta ação vai zerar todos os produtos e apagar todas as validades
+            <Card style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderColor: 'rgba(239,68,68,0.3)' }}>
+              <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <Icon nome="alert" size={18} /> Esta ação vai zerar todos os produtos e apagar todas as validades
               </p>
               <input type="password" placeholder="Sua senha de login" autoComplete="current-password"
                 value={senhaZerar} onChange={(e) => { setSenhaZerar(e.target.value); setErroZerar('') }} autoFocus
@@ -498,15 +490,15 @@ export default function Conferencia() {
               )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => { setMostrarZerar(false); setSenhaZerar(''); setErroZerar('') }}
-                  style={{ flex: 1, padding: '12px', borderRadius: 14, border: `1px solid ${D.border}`, background: 'none', color: D.text2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  style={{ flex: 1, padding: '12px', borderRadius: 14, border: `1px solid ${D.border}`, background: 'none', color: D.text2, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Cancelar
                 </button>
                 <button onClick={zerarEstoque} disabled={zerandoEstoque || !senhaZerar}
-                  style={{ flex: 1, padding: '12px', borderRadius: 14, background: '#EF4444', color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (zerandoEstoque || !senhaZerar) ? 0.4 : 1 }}>
+                  style={{ flex: 1, padding: '12px', borderRadius: 14, background: '#EF4444', color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: (zerandoEstoque || !senhaZerar) ? 0.4 : 1 }}>
                   {zerandoEstoque ? 'Zerando...' : 'Confirmar'}
                 </button>
               </div>
-            </div>
+            </Card>
           )}
         </div>
       )}
@@ -529,12 +521,12 @@ export default function Conferencia() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={labelStyle}>🍳 Cozinha</label>
+                  <label style={labelStyle}>Cozinha</label>
                   <input type="number" min="0" style={{ ...inputStyle, textAlign: 'center', padding: '10px 6px', fontSize: 20, fontWeight: 800 }}
                     value={formCozinha} onChange={(e) => handleCozinhaChange(e.target.value)} autoFocus />
                 </div>
                 <div>
-                  <label style={labelStyle}>🏪 Principal</label>
+                  <label style={labelStyle}>Principal</label>
                   <input type="number" min="0" style={{ ...inputStyle, textAlign: 'center', padding: '10px 6px', fontSize: 20, fontWeight: 800 }}
                     value={formPrincipal} onChange={(e) => handlePrincipalChange(e.target.value)} />
                 </div>
@@ -647,8 +639,9 @@ export default function Conferencia() {
                 {isCorrecao && aumenta ? 'Em qual validade entra a correção?' : isCorrecao ? 'De quais lotes sai a correção?' : aumenta ? 'Em qual validade entra?' : 'De quais lotes sai?'}
               </p>
               <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{motivoPendente.item.produtos?.nome}</p>
-              <p style={{ color: aumenta ? '#10B981' : '#EF4444', fontSize: 13, fontWeight: 600, marginBottom: 16 }}>
-                {aumenta ? `↑ Aumentou ${alvo} ${unidade}` : `↓ Diminuiu ${alvo} ${unidade}`}
+              <p style={{ color: aumenta ? '#10B981' : '#EF4444', fontSize: 13, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon nome={aumenta ? 'arrowUp' : 'arrowDown'} size={16} />
+                {aumenta ? `Aumentou ${alvo} ${unidade}` : `Diminuiu ${alvo} ${unidade}`}
               </p>
 
               {aumenta ? (
@@ -663,8 +656,8 @@ export default function Conferencia() {
                           const usado = linhasEntrada.some((l) => l.data === v.data_validade)
                           return (
                             <button key={v.id} type="button" onClick={() => somarEmLoteExistente(v.data_validade)} disabled={registrandoMotivo || usado}
-                              style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid ${vencido ? 'rgba(239,68,68,0.4)' : usado ? '#6366F1' : D.border}`, background: vencido ? 'rgba(239,68,68,0.08)' : usado ? 'rgba(99,102,241,0.08)' : D.input, color: vencido ? '#EF4444' : dias <= 7 ? '#F97316' : D.text, fontSize: 13, fontWeight: 600, cursor: usado ? 'default' : 'pointer', opacity: usado ? 0.7 : 1 }}>
-                              {usado ? '✓ ' : '+ '}{formatarData(v.data_validade)}{vencido ? ' · Vencido' : ''}
+                              style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid ${vencido ? 'rgba(239,68,68,0.4)' : usado ? '#6366F1' : D.border}`, background: vencido ? 'rgba(239,68,68,0.08)' : usado ? 'rgba(99,102,241,0.08)' : D.input, color: vencido ? '#EF4444' : dias <= 7 ? '#F97316' : D.text, fontSize: 13, fontWeight: 600, cursor: usado ? 'default' : 'pointer', opacity: usado ? 0.7 : 1, display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+                              <Icon nome={usado ? 'tick' : 'plus'} size={14} />{formatarData(v.data_validade)}{vencido ? ' · Vencido' : ''}
                               <span style={{ color: D.text2, fontWeight: 500 }}> · {v.quantidade} {unidade}</span>
                             </button>
                           )
@@ -691,8 +684,8 @@ export default function Conferencia() {
                           style={{ ...campoStyle, textAlign: 'center', fontWeight: 700 }} />
                         <button type="button" aria-label="Remover lote" disabled={registrandoMotivo || linhasEntrada.length === 1}
                           onClick={() => setLinhasEntrada((prev) => prev.filter((x) => x.key !== l.key))}
-                          style={{ height: 46, borderRadius: 12, border: `1px solid ${D.border}`, background: 'none', color: D.text2, fontSize: 16, cursor: 'pointer', opacity: linhasEntrada.length === 1 ? 0.3 : 1 }}>
-                          ✕
+                          style={{ height: 46, borderRadius: 12, border: `1px solid ${D.border}`, background: 'none', color: D.text2, cursor: 'pointer', opacity: linhasEntrada.length === 1 ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon nome="close" size={16} />
                         </button>
                         {vencido && (
                           <p style={{ gridColumn: '1 / -1', color: '#EF4444', fontSize: 11, fontWeight: 600, margin: '-2px 0 0 2px' }}>Data já vencida</p>
@@ -737,9 +730,9 @@ export default function Conferencia() {
                 <span style={{ color: contadorOk ? '#10B981' : '#F97316', fontSize: 14, fontWeight: 700 }}>
                   Lotes: {soma} de {alvo} {unidade}
                 </span>
-                {contadorOk && <span style={{ color: '#10B981', fontSize: 14, fontWeight: 800 }}>✓</span>}
+                {contadorOk && <Icon nome="tick" size={18} cor="#10B981" traco={3} />}
               </div>
-              {aviso && <p style={{ color: '#F59E0B', fontSize: 12, fontWeight: 600, marginTop: 8 }}>⚠️ {aviso}</p>}
+              {aviso && <p style={{ color: '#F59E0B', fontSize: 12, fontWeight: 600, marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={16} /> {aviso}</p>}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, marginTop: 16 }}>
                 <button type="button" onClick={fecharModalLote} disabled={registrandoMotivo}
@@ -772,37 +765,33 @@ export default function Conferencia() {
 
             <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Motivo da alteração</p>
             <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{motivoPendente.item.produtos?.nome}</p>
-            <p style={{ color: motivoPendente.diff < 0 ? '#EF4444' : '#10B981', fontSize: 13, fontWeight: 600, marginBottom: 20 }}>
+            <p style={{ color: motivoPendente.diff < 0 ? '#EF4444' : '#10B981', fontSize: 13, fontWeight: 600, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icon nome={motivoPendente.diff < 0 ? 'arrowDown' : 'arrowUp'} size={16} />
               {motivoPendente.diff < 0
-                ? `↓ Diminuiu ${Math.abs(motivoPendente.diff)} ${motivoPendente.item.produtos?.unidade}`
-                : `↑ Aumentou ${motivoPendente.diff} ${motivoPendente.item.produtos?.unidade}`}
+                ? `Diminuiu ${Math.abs(motivoPendente.diff)} ${motivoPendente.item.produtos?.unidade}`
+                : `Aumentou ${motivoPendente.diff} ${motivoPendente.item.produtos?.unidade}`}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {motivoPendente.diff < 0 ? (
                 <>
-                  <button onClick={() => registrarMotivo('saida_uso')} disabled={registrandoMotivo}
-                    style={{ padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                    📤 Saída normal de uso
+                  <button onClick={() => registrarMotivo('saida_uso')} disabled={registrandoMotivo} style={botaoMotivo}>
+                    <Icon nome="minus" size={20} cor="#EF4444" /> Saída normal de uso
                   </button>
-                  <button onClick={() => registrarMotivo('descarte_vencido')} disabled={registrandoMotivo}
-                    style={{ padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                    🗑 Produto vencido descartado
+                  <button onClick={() => registrarMotivo('descarte_vencido')} disabled={registrandoMotivo} style={botaoMotivo}>
+                    <Icon nome="trash" size={20} cor="#F97316" /> Produto vencido descartado
                   </button>
-                  <button onClick={() => registrarMotivo('correcao')} disabled={registrandoMotivo}
-                    style={{ padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                    ✏️ Correção de contagem
+                  <button onClick={() => registrarMotivo('correcao')} disabled={registrandoMotivo} style={botaoMotivo}>
+                    <Icon nome="edit" size={20} cor="#6366F1" /> Correção de contagem
                   </button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => registrarMotivo('entrada')} disabled={registrandoMotivo}
-                    style={{ padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                    📥 Entrada de produto
+                  <button onClick={() => registrarMotivo('entrada')} disabled={registrandoMotivo} style={botaoMotivo}>
+                    <Icon nome="plus" size={20} cor="#10B981" /> Entrada de produto
                   </button>
-                  <button onClick={() => registrarMotivo('correcao')} disabled={registrandoMotivo}
-                    style={{ padding: '14px 16px', borderRadius: 16, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                    ✏️ Correção de contagem
+                  <button onClick={() => registrarMotivo('correcao')} disabled={registrandoMotivo} style={botaoMotivo}>
+                    <Icon nome="edit" size={20} cor="#6366F1" /> Correção de contagem
                   </button>
                 </>
               )}
@@ -818,6 +807,6 @@ export default function Conferencia() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   )
 }

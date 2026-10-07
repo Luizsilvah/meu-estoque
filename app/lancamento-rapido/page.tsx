@@ -517,7 +517,7 @@ export default function LancamentoRapido() {
       </div>
 
       {/* ── Caixa de texto ── */}
-      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'var(--bottom-nav-h, 0px)', zIndex: 40, background: D.card, borderTop: `1px solid ${D.border}`, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))' }}>
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'var(--bottomnav-topo, 0px)', zIndex: 40, background: D.card, borderTop: `1px solid ${D.border}`, padding: '10px 12px calc(10px + var(--bottomnav-safe, env(safe-area-inset-bottom)))' }}>
         <form onSubmit={(e) => { e.preventDefault(); enviarTexto() }}
           style={{ maxWidth: 560, margin: '0 auto', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
           <button type="button" aria-label="Como escrever" onClick={() => setAjudaAberta(true)}

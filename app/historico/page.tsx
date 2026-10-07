@@ -1,8 +1,11 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 import { D } from '@/app/lib/theme'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 
 type Movimentacao = {
   id: string
@@ -14,7 +17,6 @@ type Movimentacao = {
 }
 
 export default function Historico() {
-  const router = useRouter()
   const [lista, setLista] = useState<Movimentacao[]>([])
   const [carregando, setCarregando] = useState(true)
 
@@ -33,64 +35,49 @@ export default function Historico() {
   }
 
   return (
-    <main style={{ minHeight: '100vh', background: D.bg, padding: '0 0 32px' }}>
+    <Page>
+      <PageHeader titulo="Histórico" subtitulo="Movimentações recentes" />
 
-      {/* Header */}
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }}>
-        <button onClick={() => router.back()} style={{ color: D.text2, fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, display: 'block' }}>
-          ← Voltar
-        </button>
-        <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Histórico</h1>
-        <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>Movimentações recentes</p>
-      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {carregando && (
+          <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', marginTop: 32 }}>Carregando...</p>
+        )}
 
-      <div style={{ padding: '16px' }}>
-        <div style={{ maxWidth: 480, margin: '0 auto' }}>
+        {!carregando && lista.length === 0 && (
+          <Card style={{ padding: 16, textAlign: 'center' }}>
+            <p style={{ color: D.text2, fontSize: 14, margin: 0 }}>Nenhuma movimentação registrada.</p>
+          </Card>
+        )}
 
-          {carregando && (
-            <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', marginTop: 32 }}>Carregando...</p>
-          )}
-
-          {!carregando && lista.length === 0 && (
-            <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: '16px', textAlign: 'center' }}>
-              <p style={{ color: D.text2, fontSize: 14 }}>Nenhuma movimentação registrada.</p>
-            </div>
-          )}
-
-          {!carregando && lista.map((mov) => (
-            <div key={mov.id} style={{
-              background: D.card,
-              border: `1px solid ${D.border}`,
-              borderRadius: 14,
-              padding: '12px 14px',
-              marginBottom: 8,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}>
+        {!carregando && lista.map((mov) => {
+          const entrada = mov.tipo === 'entrada'
+          const cor = entrada ? '#10B981' : '#EF4444'
+          return (
+            <Card key={mov.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
+              <span style={{
+                width: 44, height: 44, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: entrada ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', color: cor,
+              }}>
+                <Icon nome={entrada ? 'arrowDown' : 'arrowUp'} size={20} traco={2.4} />
+              </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ color: D.text, fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <p style={{ color: D.text, fontSize: 15, fontWeight: 800, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {mov.produtos?.nome ?? '—'}
                 </p>
-                <p style={{ color: D.muted, fontSize: 12, marginTop: 2 }}>{formatarData(mov.data_hora)}</p>
-                {mov.usuario_nome && (
-                  <p style={{ color: D.muted, fontSize: 12 }}>{mov.usuario_nome}</p>
-                )}
+                <p style={{ color: D.text2, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {formatarData(mov.data_hora)}{mov.usuario_nome ? ` · ${mov.usuario_nome}` : ''}
+                </p>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, marginLeft: 12, flexShrink: 0 }}>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20,
-                  background: mov.tipo === 'entrada' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                  color: mov.tipo === 'entrada' ? '#10B981' : '#EF4444',
-                }}>
-                  {mov.tipo === 'entrada' ? 'Entrada' : 'Saída'}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+                <span style={{ color: cor, fontSize: 26, fontWeight: 800, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                  {entrada ? '+' : '−'}{mov.quantidade}
                 </span>
-                <span style={{ color: D.text, fontSize: 14, fontWeight: 700 }}>{mov.quantidade}</span>
+                <span style={{ color: cor, fontSize: 11, fontWeight: 700, marginTop: 3 }}>{entrada ? 'Entrada' : 'Saída'}</span>
               </div>
-            </div>
-          ))}
-        </div>
+            </Card>
+          )
+        })}
       </div>
-    </main>
+    </Page>
   )
 }

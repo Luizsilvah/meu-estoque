@@ -1,12 +1,16 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 
 import { D } from '@/app/lib/theme'
 import type { ItemPrevisaoCompra } from '@/app/api/previsao-compras/route'
 
 type Grupo = { fornecedor: string; itens: ItemPrevisaoCompra[] }
 
+// emoji: só na mensagem do WhatsApp (na tela vira a bolinha colorida)
 const STATUS_INFO = {
   CRITICO:        { emoji: '🔴', texto: 'Crítico',        cor: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
   COMPRAR_QUINTA: { emoji: '🟡', texto: 'Comprar na quinta', cor: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
@@ -108,63 +112,62 @@ export default function ComprasQuinta() {
   if (erro) return <div style={{ minHeight: '100vh', padding: 24, background: D.bg }}><p style={{ color: '#EF4444', fontWeight: 700 }}>Erro: {erro}</p></div>
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg }}>
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }}>
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Lista de Compras da Quinta</h1>
-            <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>
-              {relevantes.length === 0
-                ? 'Nada precisa entrar na compra desta semana'
-                : `${totalCriticos} crítico${totalCriticos !== 1 ? 's' : ''} · ${totalComprarQuinta} para comprar na quinta`}
-            </p>
-          </div>
-          {relevantes.length > 0 && (
-            <button onClick={() => compartilharWhatsApp(gerarMensagem(grupos))}
-              style={{ background: '#25D366', border: 'none', borderRadius: 12, padding: '8px 12px', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              {WA_ICON} Compartilhar
-            </button>
-          )}
-        </div>
-      </div>
+    <Page>
+      <PageHeader
+        titulo="Compras da quinta"
+        subtitulo={relevantes.length === 0
+          ? 'Nada precisa entrar na compra desta semana'
+          : `${totalCriticos} crítico${totalCriticos !== 1 ? 's' : ''} · ${totalComprarQuinta} para comprar na quinta`}
+        acao={relevantes.length > 0 ? (
+          <button onClick={() => compartilharWhatsApp(gerarMensagem(grupos))} aria-label="Compartilhar no WhatsApp"
+            style={{ flexShrink: 0, height: 44, padding: '0 14px', borderRadius: 14, background: '#25D366', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            {WA_ICON} Compartilhar
+          </button>
+        ) : undefined}
+      />
 
-      <div style={{ padding: '16px', maxWidth: 640, margin: '0 auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {relevantes.length === 0 && (
-          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 16, padding: 24, textAlign: 'center' }}>
-            <p style={{ color: '#10B981', fontWeight: 700, fontSize: 15 }}>Estoque em dia até a próxima quinta!</p>
-          </div>
+          <Card style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.25)', padding: 24, textAlign: 'center' }}>
+            <span style={{ display: 'inline-flex', color: '#10B981' }}><Icon nome="check" size={32} /></span>
+            <p style={{ color: '#10B981', fontWeight: 800, fontSize: 15, margin: '8px 0 0' }}>Estoque em dia até a próxima quinta!</p>
+          </Card>
         )}
 
         {relevantes.length > 0 && (
-          <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: '14px 16px', marginBottom: 12 }}>
-            <p style={{ color: D.text2, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Total estimado</p>
-            <p style={{ color: D.text, fontSize: 26, fontWeight: 800, letterSpacing: '-0.5px', margin: '2px 0 0', overflowWrap: 'anywhere' }}>{reais(totalEstimado)}</p>
-            {semPreco > 0 && (
-              <p style={{ color: '#F59E0B', fontSize: 12, fontWeight: 600, margin: '4px 0 0' }}>
-                {semPreco} {semPreco === 1 ? 'item sem preço cadastrado' : 'itens sem preço cadastrado'}
-              </p>
-            )}
-          </div>
+          <Card style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
+            <span style={{ width: 48, height: 48, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.14)', color: '#EF4444' }}>
+              <Icon nome="cart" size={24} />
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Total estimado</p>
+              <p style={{ color: D.text, fontSize: 26, fontWeight: 800, letterSpacing: '-0.5px', margin: '2px 0 0', overflowWrap: 'anywhere', lineHeight: 1.1 }}>{reais(totalEstimado)}</p>
+              {semPreco > 0 && (
+                <p style={{ color: '#F59E0B', fontSize: 12, fontWeight: 600, margin: '4px 0 0' }}>
+                  {semPreco} {semPreco === 1 ? 'item sem preço cadastrado' : 'itens sem preço cadastrado'}
+                </p>
+              )}
+            </div>
+          </Card>
         )}
 
         {relevantes.length > 0 && (
           <button onClick={() => copiar(gerarMensagem(grupos), () => { setCopiado(true); setTimeout(() => setCopiado(false), 2000) })}
-            style={{ width: '100%', marginBottom: 16, padding: '10px', borderRadius: 12, background: D.card, border: `1px solid ${D.border}`, color: D.text2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            {copiado ? '✓ Copiado!' : '📋 Copiar lista'}
+            style={{ width: '100%', height: 46, borderRadius: 14, background: D.card, border: `1px solid ${D.border}`, color: copiado ? '#10B981' : D.text2, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit' }}>
+            <Icon nome={copiado ? 'tick' : 'list'} size={18} /> {copiado ? 'Copiado!' : 'Copiar lista'}
           </button>
         )}
 
         {grupos.map((grupo) => (
-          <div key={grupo.fornecedor} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: `color-mix(in srgb, ${D.text} 5%, ${D.card})`, borderBottom: `1px solid ${D.border}` }}>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ color: D.text, fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grupo.fornecedor}</p>
-                <p style={{ color: D.text2, fontWeight: 600, fontSize: 12, marginTop: 2 }}>Subtotal {reais(somar(grupo.itens))}</p>
+          <Card key={grupo.fornecedor}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 16px', background: D.input, borderBottom: `1px solid ${D.border}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ color: D.text, fontWeight: 800, fontSize: 14, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{grupo.fornecedor}</p>
+                <p style={{ color: D.text2, fontWeight: 600, fontSize: 12, margin: '2px 0 0' }}>Subtotal {reais(somar(grupo.itens))}</p>
               </div>
-              <button onClick={() => compartilharWhatsApp(gerarMensagem([grupo]))}
-                style={{ background: '#25D366', border: 'none', borderRadius: 8, padding: '4px 8px', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 8 }}>
+              <button onClick={() => compartilharWhatsApp(gerarMensagem([grupo]))} aria-label={`Compartilhar ${grupo.fornecedor} no WhatsApp`}
+                style={{ flexShrink: 0, height: 32, padding: '0 10px', borderRadius: 10, background: '#25D366', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
                 {WA_ICON} WA
               </button>
             </div>
@@ -173,26 +176,30 @@ export default function ComprasQuinta() {
               const info = STATUS_INFO[item.status]
               const valor = valorItem(item)
               return (
-                <div key={item.produto_id} style={{ padding: '12px 16px', borderTop: idx > 0 ? `1px solid ${D.border}` : 'none' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: D.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.nome}</p>
-                    <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: info.bg, color: info.cor, whiteSpace: 'nowrap' }}>
-                      {info.emoji} {info.texto}
+                <div key={item.produto_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: idx > 0 ? `1px solid ${D.border}` : 'none' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 15, fontWeight: 800, color: D.text, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.nome}</p>
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 6, color: info.cor, fontSize: 12, fontWeight: 700, margin: '3px 0 0' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
+                      {info.texto}
+                    </p>
+                    <p style={{ fontSize: 12, color: D.text2, margin: '4px 0 0', lineHeight: 1.4 }}>
+                      Atual {item.qtd_atual} {item.unidade} · Previsto p/ quinta {item.estoque_previsto} · Mínimo {item.estoque_minimo} · Consumo {item.consumo_medio_diario}/dia
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+                    <span style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: info.cor, fontVariantNumeric: 'tabular-nums' }}>{item.qtd_sugerida}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: D.text2, marginTop: 3 }}>comprar · {item.unidade}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: valor != null ? D.text : D.muted, marginTop: 2 }}>
+                      {valor != null ? reais(valor) : 'sem preço'}
                     </span>
                   </div>
-                  <p style={{ fontSize: 12, color: D.muted, marginTop: 4 }}>
-                    Atual {item.qtd_atual} {item.unidade} · Previsto p/ quinta {item.estoque_previsto} · Mínimo {item.estoque_minimo} · Consumo {item.consumo_medio_diario}/dia
-                  </p>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: info.cor, marginTop: 4 }}>
-                    Comprar {item.qtd_sugerida} {item.unidade} ·{' '}
-                    {valor != null ? reais(valor) : <span style={{ color: D.muted, fontWeight: 600 }}>sem preço</span>}
-                  </p>
                 </div>
               )
             })}
-          </div>
+          </Card>
         ))}
       </div>
-    </div>
+    </Page>
   )
 }

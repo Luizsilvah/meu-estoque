@@ -33,6 +33,10 @@ const PATHS: Record<string, React.ReactNode> = {
   bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
   chevron: <><path d="m9 6 6 6-6 6" /></>,
+  tick: <><path d="m5 12.5 4.5 4.5L19 7.5" /></>,
+  alert: <><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17.5v.01" /></>,
+  arrowUp: <><path d="M12 19V5M6 11l6-6 6 6" /></>,
+  arrowDown: <><path d="M12 5v14M6 13l6 6 6-6" /></>,
   zap: <><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" /></>,
 }
 

@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react'
 import { D } from '@/app/lib/theme'
 import { Validade, diasAteVencer } from '@/app/lib/validades'
 import type { ItemValidadeDivergente } from '@/app/api/validades-divergentes/route'
+import SearchBar from '@/app/components/ui/SearchBar'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 
 // Abas "Divergentes" e "Sem validade cadastrada" de /validades (conteúdo que
 // antes era a página /validades-divergentes; a lista é carregada pela página).
@@ -63,7 +66,7 @@ export default function ListaDivergentes({ aba, itens, setItens, recarregar }: {
   function aoCorrigir(produtoId: string, nome: string) {
     setCorrigindo(null)
     setItens((prev) => prev.filter((i) => i.produto_id !== produtoId))
-    setAviso({ msg: `✓ ${nome} corrigido`, ok: true })
+    setAviso({ msg: `${nome} corrigido`, ok: true })
     setTimeout(() => setAviso(null), 2500)
   }
 
@@ -77,55 +80,58 @@ export default function ListaDivergentes({ aba, itens, setItens, recarregar }: {
 
   return (
     <>
-        <p style={{ color: D.muted, fontSize: 13, margin: '0 2px' }}>
+        <p style={{ color: D.text2, fontSize: 13, margin: '0 2px' }}>
           {aba === 'divergentes'
             ? 'Produtos em que a soma dos lotes não bate com o estoque'
             : 'Produtos com estoque e nenhuma validade cadastrada'}
         </p>
 
-        {/* Busca */}
-        <div style={{ position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: D.muted }}>🔍</span>
-          <input type="text" placeholder="Buscar produto..."
-            value={busca} onChange={(e) => setBusca(e.target.value)}
-            style={{ width: '100%', background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: '12px 14px 12px 36px', fontSize: 16, color: D.text, outline: 'none', boxSizing: 'border-box' }}
-          />
-        </div>
+        <SearchBar value={busca} onChange={setBusca} placeholder="Buscar produto..." />
 
         {aviso && (
-          <p style={{ color: aviso.ok ? '#10B981' : '#EF4444', fontSize: 13, fontWeight: 700, textAlign: 'center', background: aviso.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', borderRadius: 12, padding: '10px 14px' }}>{aviso.msg}</p>
+          <p style={{ color: aviso.ok ? '#10B981' : '#EF4444', fontSize: 13, fontWeight: 700, textAlign: 'center', background: aviso.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', borderRadius: 12, padding: '10px 14px', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Icon nome={aviso.ok ? 'tick' : 'alert'} size={16} /> {aviso.msg}
+          </p>
         )}
 
         {visiveis.length === 0 ? (
           busca.trim() ? (
             <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', paddingTop: 40 }}>Nenhum produto encontrado.</p>
           ) : (
-            <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 16, padding: 24, textAlign: 'center' }}>
-              <p style={{ color: '#10B981', fontWeight: 700, fontSize: 15 }}>
+            <Card style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.25)', padding: 24, textAlign: 'center' }}>
+              <span style={{ display: 'inline-flex', color: '#10B981' }}><Icon nome="check" size={32} /></span>
+              <p style={{ color: '#10B981', fontWeight: 800, fontSize: 15, margin: '8px 0 0' }}>
                 {aba === 'divergentes' ? 'Todas as validades batem com o estoque!' : 'Todo produto com estoque tem validade cadastrada!'}
               </p>
-            </div>
+            </Card>
           )
         ) : visiveis.map((item) => {
           const dif = resumoDiferenca(item)
+          const n = Math.abs(item.diferenca)
           return (
-            <div key={item.produto_id} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ color: D.text, fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.nome}</p>
-                  <p style={{ color: D.text2, fontSize: 12, marginTop: 2 }}>{item.fornecedor ?? 'Sem fornecedor'}</p>
+            <Card key={item.produto_id} style={{ padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: D.text, fontWeight: 800, fontSize: 15, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.nome}</p>
+                  <p style={{ color: D.text2, fontSize: 12, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.fornecedor ?? 'Sem fornecedor'}</p>
+                  <p style={{ color: D.text2, fontSize: 13, margin: '4px 0 0' }}>
+                    Estoque <strong style={{ color: D.text }}>{item.qtd_estoque}</strong>
+                    <span style={{ display: 'inline-block', width: 12 }} />
+                    Validades <strong style={{ color: D.text }}>{item.qtd_validades}</strong>
+                  </p>
                 </div>
-                <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: dif.bg, color: dif.cor, whiteSpace: 'nowrap' }}>
-                  {dif.texto}
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+                  <span style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: dif.cor, fontVariantNumeric: 'tabular-nums' }}>
+                    {item.tipo === 'SOBRA_VALIDADE' ? '+' : item.tipo === 'FALTA_VALIDADE' ? '−' : ''}{n}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: dif.cor, marginTop: 3 }}>
+                    {item.tipo === 'SOBRA_VALIDADE' ? 'sobrando' : item.tipo === 'FALTA_VALIDADE' ? 'faltando' : 'sem validade'}
+                  </span>
+                </div>
               </div>
 
-              <p style={{ color: D.text2, fontSize: 13, marginTop: 8 }}>
-                Estoque <strong style={{ color: D.text }}>{item.qtd_estoque}</strong> · Validades <strong style={{ color: D.text }}>{item.qtd_validades}</strong>
-              </p>
-
               {item.lotes.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                   {lotesOrdenados(item.lotes).map((l) => {
                     const vencido = diasAteVencer(l.data_validade) < 0
                     return (
@@ -139,10 +145,10 @@ export default function ListaDivergentes({ aba, itens, setItens, recarregar }: {
               )}
 
               <button onClick={() => setCorrigindo(item)}
-                style={{ width: '100%', marginTop: 12, padding: '11px', borderRadius: 12, background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.35)', color: '#6366F1', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-                Corrigir
+                style={{ width: '100%', marginTop: 12, height: 44, borderRadius: 12, background: 'var(--accent-bg)', border: '1px solid rgba(99,102,241,0.35)', color: 'var(--accent-text)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
+                <Icon nome="edit" size={16} /> Corrigir
               </button>
-            </div>
+            </Card>
           )
         })}
 
@@ -318,8 +324,8 @@ function ModalCorrigir({ item, onFechar, onSalvo, onDesatualizado }: {
                     const usado = linhasEntrada.some((l) => l.data === v.data_validade)
                     return (
                       <button key={v.id} type="button" onClick={() => somarEmLoteExistente(v.data_validade)} disabled={salvando || usado}
-                        style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid ${vencido ? 'rgba(239,68,68,0.4)' : usado ? '#6366F1' : D.border}`, background: vencido ? 'rgba(239,68,68,0.08)' : usado ? 'rgba(99,102,241,0.08)' : D.input, color: vencido ? '#EF4444' : dias <= 7 ? '#F97316' : D.text, fontSize: 13, fontWeight: 600, cursor: usado ? 'default' : 'pointer', opacity: usado ? 0.7 : 1 }}>
-                        {usado ? '✓ ' : '+ '}{formatarData(v.data_validade)}{vencido ? ' · Vencido' : ''}
+                        style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid ${vencido ? 'rgba(239,68,68,0.4)' : usado ? '#6366F1' : D.border}`, background: vencido ? 'rgba(239,68,68,0.08)' : usado ? 'rgba(99,102,241,0.08)' : D.input, color: vencido ? '#EF4444' : dias <= 7 ? '#F97316' : D.text, fontSize: 13, fontWeight: 600, cursor: usado ? 'default' : 'pointer', opacity: usado ? 0.7 : 1, display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+                        <Icon nome={usado ? 'tick' : 'plus'} size={14} />{formatarData(v.data_validade)}{vencido ? ' · Vencido' : ''}
                         <span style={{ color: D.text2, fontWeight: 500 }}> · {v.quantidade} {unidade}</span>
                       </button>
                     )
@@ -346,8 +352,8 @@ function ModalCorrigir({ item, onFechar, onSalvo, onDesatualizado }: {
                     style={{ ...campoStyle, textAlign: 'center', fontWeight: 700 }} />
                   <button type="button" aria-label="Remover lote" disabled={salvando || linhasEntrada.length === 1}
                     onClick={() => setLinhasEntrada((prev) => prev.filter((x) => x.key !== l.key))}
-                    style={{ height: 46, borderRadius: 12, border: `1px solid ${D.border}`, background: 'none', color: D.text2, fontSize: 16, cursor: 'pointer', opacity: linhasEntrada.length === 1 ? 0.3 : 1 }}>
-                    ✕
+                    style={{ height: 46, borderRadius: 12, border: `1px solid ${D.border}`, background: 'none', color: D.text2, cursor: 'pointer', opacity: linhasEntrada.length === 1 ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon nome="close" size={16} />
                   </button>
                   {vencido && (
                     <p style={{ gridColumn: '1 / -1', color: '#EF4444', fontSize: 11, fontWeight: 600, margin: '-2px 0 0 2px' }}>Data já vencida</p>
@@ -367,7 +373,7 @@ function ModalCorrigir({ item, onFechar, onSalvo, onDesatualizado }: {
           <span style={{ color: contadorOk ? '#10B981' : '#F97316', fontSize: 14, fontWeight: 700 }}>
             Lotes: {soma} de {alvo} {unidade}
           </span>
-          {contadorOk && <span style={{ color: '#10B981', fontSize: 14, fontWeight: 800 }}>✓</span>}
+          {contadorOk && <Icon nome="tick" size={18} cor="#10B981" traco={3} />}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, marginTop: 16 }}>

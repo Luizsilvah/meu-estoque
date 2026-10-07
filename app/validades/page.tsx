@@ -1,6 +1,7 @@
 'use client'
 import { use, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
 
 import { D } from '@/app/lib/theme'
 import type { Validade } from '@/app/lib/validades'
@@ -93,24 +94,20 @@ export default function Validades({ searchParams }: { searchParams: Promise<{ [k
   const erro = aba === 'vencendo' ? (lotes.length === 0 && erroVenc) : (divergentes.length === 0 && erroDiv)
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg, overflowX: 'hidden' }}>
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }}>
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Validades</h1>
-        <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>Lotes vencendo, divergentes e sem validade</p>
-      </div>
+    <Page>
+      <PageHeader titulo="Validades" subtitulo="Vencendo, divergentes e sem validade" />
 
-      <div style={{ padding: '16px', maxWidth: 640, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Abas */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 4, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: 4 }}>
+        <div role="tablist" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 4, background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: 4 }}>
           {ABAS.map((a) => {
             const ativa = aba === a.id
             return (
-              <button key={a.id} onClick={() => trocarAba(a.id)}
-                style={{ padding: '8px 4px', borderRadius: 10, border: 'none', background: ativa ? '#6366F1' : 'transparent', color: ativa ? '#fff' : D.text2, cursor: 'pointer', lineHeight: 1.25, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{a.label}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.85 }}>{loading ? '…' : totais[a.id]}</span>
+              <button key={a.id} role="tab" aria-selected={ativa} onClick={() => trocarAba(a.id)}
+                style={{ padding: '8px 4px', borderRadius: 12, border: 'none', background: ativa ? '#6366F1' : 'transparent', color: ativa ? '#fff' : D.text2, cursor: 'pointer', lineHeight: 1.25, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0, fontFamily: 'inherit' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.85 }}>{loading ? '…' : totais[a.id]}</span>
               </button>
             )
           })}
@@ -119,13 +116,13 @@ export default function Validades({ searchParams }: { searchParams: Promise<{ [k
         {loading ? (
           <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', paddingTop: 40 }}>Carregando...</p>
         ) : erro ? (
-          <p style={{ color: '#EF4444', fontWeight: 700, background: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: '12px 14px' }}>Erro: {erro}</p>
+          <p style={{ color: '#EF4444', fontWeight: 700, background: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: '12px 14px', margin: 0 }}>Erro: {erro}</p>
         ) : aba === 'vencendo' ? (
           <ListaVencendo lotes={lotes} janela={janela} setJanela={setJanela} />
         ) : (
           <ListaDivergentes aba={aba} itens={divergentes} setItens={setDivergentes} recarregar={recarregarDivergentes} />
         )}
       </div>
-    </div>
+    </Page>
   )
 }

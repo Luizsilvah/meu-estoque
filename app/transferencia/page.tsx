@@ -1,7 +1,11 @@
 'use client'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import Page from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import SearchBar from '@/app/components/ui/SearchBar'
+import Card, { CARD_THUMB } from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
@@ -144,25 +148,13 @@ function TransferenciaContent() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg }}>
+    <Page>
 
-      {/* Header */}
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }}>
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Transferência</h1>
-        <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>Mover produtos entre Principal e Cozinha</p>
-      </div>
+      <PageHeader titulo="Transferência" subtitulo="Entre Principal e Cozinha" />
 
-      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-        {/* Busca */}
-        <div style={{ position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: D.muted }}>🔍</span>
-          <input type="text" placeholder="Buscar produto..."
-            value={busca} onChange={(e) => setBusca(e.target.value)}
-            style={{ width: '100%', background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: '12px 14px 12px 36px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box' }}
-          />
-        </div>
+        <SearchBar value={busca} onChange={setBusca} placeholder="Buscar produto..." />
 
         {/* Lista */}
         {filtrados.length === 0 ? (
@@ -173,39 +165,32 @@ function TransferenciaContent() {
           const ultVal = ultimaValidadeTransferida[item.produto_id]
 
           return (
-            <button key={item.id} onClick={() => abrirModal(item)}
-              style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: 14, textAlign: 'left', cursor: 'pointer', width: '100%' }}>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                <FotoThumb src={item.produtos?.foto_url ?? null} />
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ color: D.text, fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.produtos?.nome ?? '—'}</p>
-                  <p style={{ color: D.text2, fontSize: 12, marginTop: 2 }}>
+            <Card key={item.id}>
+              <button onClick={() => abrirModal(item)}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <FotoThumb src={item.produtos?.foto_url ?? null} size={CARD_THUMB} radius={14} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: D.text, fontWeight: 800, fontSize: 16, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.produtos?.nome ?? '—'}</p>
+                  <p style={{ color: D.text2, fontSize: 13, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.produtos?.fornecedores?.nome ?? '—'} · {item.produtos?.unidade}
                   </p>
+                  <p style={{ color: D.text2, fontSize: 13, margin: '3px 0 0' }}>
+                    Principal <strong style={{ color: D.text }}>{principal}</strong>
+                    <span style={{ display: 'inline-block', width: 12 }} />
+                    Cozinha <strong style={{ color: D.text }}>{cozinha}</strong>
+                  </p>
+                  {ultVal && (
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 6, color: D.text2, fontSize: 12, margin: '4px 0 0' }}>
+                      <Icon nome="leftRight" size={14} />
+                      Último lote: <strong style={{ color: D.text }}>{new Date(ultVal + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>
+                    </p>
+                  )}
                 </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 0, background: D.input, borderRadius: 12, overflow: 'hidden' }}>
-                {[
-                  { label: '🏪 Principal', value: principal },
-                  { label: '🍳 Cozinha', value: cozinha },
-                  { label: 'Total', value: item.qtd_atual },
-                ].map((stat, i) => (
-                  <div key={i} style={{ flex: 1, padding: '8px 10px', textAlign: 'center', borderRight: i < 2 ? `1px solid ${D.border}` : 'none' }}>
-                    <p style={{ fontSize: 10, color: D.muted, fontWeight: 600, marginBottom: 2 }}>{stat.label}</p>
-                    <p style={{ fontSize: 18, fontWeight: 800, color: D.text }}>{stat.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {ultVal && (
-                <p style={{ fontSize: 11, color: D.muted, marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span>↔</span>
-                  <span>Último lote transferido: <span style={{ fontWeight: 700, color: D.text2 }}>{new Date(ultVal + 'T00:00:00').toLocaleDateString('pt-BR')}</span></span>
-                </p>
-              )}
-            </button>
+                <span style={{ fontSize: 34, fontWeight: 800, lineHeight: 1, color: D.text, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                  {item.qtd_atual}
+                </span>
+              </button>
+            </Card>
           )
         })}
       </div>
@@ -231,18 +216,20 @@ function TransferenciaContent() {
               <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Transferir</p>
               <p style={{ color: D.text, fontWeight: 700, fontSize: 16, marginBottom: 2 }}>{selecionado.produtos?.nome}</p>
               <p style={{ color: D.text2, fontSize: 12, marginBottom: 20 }}>
-                🏪 {principal} no principal · 🍳 {cozinha} na cozinha
+                Principal <strong style={{ color: D.text }}>{principal}</strong> · Cozinha <strong style={{ color: D.text }}>{cozinha}</strong>
               </p>
 
               {/* Direção */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
                 <button onClick={() => { setDirecao('cozinha'); setErroTransf(null) }}
-                  style={{ padding: '16px 10px', borderRadius: 16, border: `2px solid ${direcao === 'cozinha' ? '#6366F1' : D.border}`, background: direcao === 'cozinha' ? 'rgba(99,102,241,0.1)' : D.input, color: direcao === 'cozinha' ? '#6366F1' : D.text, fontSize: 13, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4 }}>
-                  🏪 → 🍳{'\n'}Para cozinha
+                  style={{ padding: '16px 10px', borderRadius: 16, border: `2px solid ${direcao === 'cozinha' ? '#6366F1' : D.border}`, background: direcao === 'cozinha' ? 'rgba(99,102,241,0.1)' : D.input, color: direcao === 'cozinha' ? 'var(--accent-text)' : D.text, fontSize: 13, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+                  <Icon nome="leftRight" size={20} />
+                  Para cozinha
                 </button>
                 <button onClick={() => { setDirecao('principal'); setErroTransf(null) }}
-                  style={{ padding: '16px 10px', borderRadius: 16, border: `2px solid ${direcao === 'principal' ? '#6366F1' : D.border}`, background: direcao === 'principal' ? 'rgba(99,102,241,0.1)' : D.input, color: direcao === 'principal' ? '#6366F1' : D.text, fontSize: 13, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4 }}>
-                  🍳 → 🏪{'\n'}Para principal
+                  style={{ padding: '16px 10px', borderRadius: 16, border: `2px solid ${direcao === 'principal' ? '#6366F1' : D.border}`, background: direcao === 'principal' ? 'rgba(99,102,241,0.1)' : D.input, color: direcao === 'principal' ? 'var(--accent-text)' : D.text, fontSize: 13, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+                  <Icon nome="leftRight" size={20} />
+                  Para principal
                 </button>
               </div>
 
@@ -257,7 +244,7 @@ function TransferenciaContent() {
                 return (
                   <div style={{ marginBottom: 20 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 10, padding: '8px 12px', marginBottom: 10 }}>
-                      <span style={{ fontSize: 14 }}>📋</span>
+                      <Icon nome="alert" size={16} cor="#F97316" />
                       <p style={{ color: '#F97316', fontSize: 11, fontWeight: 700 }}>Retire sempre o lote mais antigo primeiro</p>
                     </div>
                     <p style={{ color: D.text2, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Selecione os lotes transferidos:</p>
@@ -281,7 +268,7 @@ function TransferenciaContent() {
                               if (next[v.id]) { delete next[v.id] } else { next[v.id] = Math.min(1, v.quantidade) }
                               return next
                             })} style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? '#6366F1' : D.border}`, background: checked ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0 }}>
-                              {checked && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                              {checked && <Icon nome="tick" size={14} cor="#fff" traco={3} />}
                             </button>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -314,7 +301,7 @@ function TransferenciaContent() {
                               if (next['__sem__']) { delete next['__sem__'] } else { next['__sem__'] = Math.min(1, semValidadeDisp) }
                               return next
                             })} style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? '#6366F1' : D.border}`, background: checked ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0 }}>
-                              {checked && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                              {checked && <Icon nome="tick" size={14} cor="#fff" traco={3} />}
                             </button>
                             <div style={{ flex: 1 }}>
                               <span style={{ fontSize: 13, fontWeight: 700, color: D.text }}>Sem validade</span>
@@ -390,6 +377,6 @@ function TransferenciaContent() {
           </div>
         )
       })()}
-    </div>
+    </Page>
   )
 }

@@ -713,7 +713,7 @@ export default function NotaPage() {
       </div>
 
       {/* Rodapé fixo */}
-      <div className="fixed left-0 right-0 p-4 bg-gray-50 border-t border-gray-200" style={{ bottom: 'var(--bottom-nav-h, 0px)' }}>
+      <div className="fixed left-0 right-0 p-4 bg-gray-50 border-t border-gray-200" style={{ bottom: 'var(--bottomnav-topo, 0px)' }}>
         <div className="max-w-md mx-auto space-y-2">
           {pendentes > 0 && (
             <p className="text-orange-600 text-xs text-center">

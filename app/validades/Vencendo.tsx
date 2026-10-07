@@ -3,6 +3,10 @@ import { useMemo, useState } from 'react'
 
 import { D } from '@/app/lib/theme'
 import { Validade, diasAteVencer } from '@/app/lib/validades'
+import SearchBar from '@/app/components/ui/SearchBar'
+import Chips from '@/app/components/ui/Chips'
+import Card from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 
 // Aba "Vencendo" de /validades: lotes vencidos e que vencem na janela escolhida,
 // só de produtos com estoque > 0 (mesma regra do card da tela inicial, ver
@@ -67,61 +71,55 @@ export default function ListaVencendo({ lotes, janela, setJanela }: {
   return (
     <>
       {/* Janela */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ color: D.text2, fontSize: 13, fontWeight: 600, marginLeft: 2 }}>Vencem em até</span>
-        {JANELAS.map((j) => {
-          const ativa = janela === j
-          return (
-            <button key={j} onClick={() => setJanela(j)}
-              style={{ padding: '7px 14px', borderRadius: 20, border: `1px solid ${ativa ? '#6366F1' : D.border}`, background: ativa ? 'rgba(99,102,241,0.12)' : D.card, color: ativa ? '#6366F1' : D.text2, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              {j} dias
-            </button>
-          )
-        })}
+      <div>
+        <p style={{ color: D.text2, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 8px 2px' }}>Vencem em até</p>
+        <Chips itens={JANELAS.map((j) => ({ chave: String(j), label: `${j} dias`, ativo: janela === j, onClick: () => setJanela(j) }))} />
       </div>
 
       {lotes.length > 0 && (
-        <p style={{ color: D.muted, fontSize: 13, margin: '0 2px' }}>
+        <p style={{ color: D.text2, fontSize: 13, margin: '0 2px' }}>
           {vencidos > 0 && <><strong style={{ color: '#EF4444' }}>{vencidos} vencido{vencidos === 1 ? '' : 's'}</strong> · </>}
           {lotes.length - vencidos} vencendo em até {janela} dias
         </p>
       )}
 
-      {/* Busca */}
-      <div style={{ position: 'relative' }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: D.muted }}>🔍</span>
-        <input type="text" placeholder="Buscar produto..."
-          value={busca} onChange={(e) => setBusca(e.target.value)}
-          style={{ width: '100%', background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: '12px 14px 12px 36px', fontSize: 16, color: D.text, outline: 'none', boxSizing: 'border-box' }}
-        />
-      </div>
+      <SearchBar value={busca} onChange={setBusca} placeholder="Buscar produto..." />
 
       {visiveis.length === 0 ? (
         busca.trim() ? (
           <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', paddingTop: 40 }}>Nenhum produto encontrado.</p>
         ) : (
-          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 16, padding: 24, textAlign: 'center' }}>
-            <p style={{ color: '#10B981', fontWeight: 700, fontSize: 15 }}>Nenhum lote vencido ou vencendo em até {janela} dias!</p>
-          </div>
+          <Card style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.25)', padding: 24, textAlign: 'center' }}>
+            <span style={{ display: 'inline-flex', color: '#10B981' }}><Icon nome="check" size={32} /></span>
+            <p style={{ color: '#10B981', fontWeight: 800, fontSize: 15, margin: '8px 0 0' }}>Nenhum lote vencido ou vencendo em até {janela} dias!</p>
+          </Card>
         )
       ) : visiveis.map((l) => {
         const b = badgeDias(l.dias)
         const vencido = l.dias < 0
         return (
-          <div key={l.id} style={{ background: vencido ? 'rgba(239,68,68,0.06)' : D.card, border: `1px solid ${vencido ? 'rgba(239,68,68,0.4)' : D.border}`, borderRadius: 16, padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ color: D.text, fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.nome}</p>
-                <p style={{ color: D.text2, fontSize: 12, marginTop: 2 }}>{l.fornecedor ?? 'Sem fornecedor'}</p>
-              </div>
-              <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: b.bg, color: b.cor, whiteSpace: 'nowrap' }}>
+          <Card key={l.id} style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+            ...(vencido ? { background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.4)' } : {}),
+          }}>
+            <span style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: b.bg, color: b.cor }}>
+              <Icon nome="calendar" size={20} />
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ color: D.text, fontWeight: 800, fontSize: 15, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.nome}</p>
+              <p style={{ color: D.text2, fontSize: 12, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {l.fornecedor ?? 'Sem fornecedor'} · Val. <strong style={{ color: vencido ? '#EF4444' : D.text }}>{formatarData(l.data_validade)}</strong>
+              </p>
+              <p style={{ display: 'flex', alignItems: 'center', gap: 6, color: b.cor, fontSize: 13, fontWeight: 700, margin: '4px 0 0' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
                 {b.texto}
-              </span>
+              </p>
             </div>
-            <p style={{ color: D.text2, fontSize: 13, marginTop: 8 }}>
-              Validade <strong style={{ color: vencido ? '#EF4444' : D.text }}>{formatarData(l.data_validade)}</strong> · Lote <strong style={{ color: D.text }}>{l.quantidade}{l.unidade ? ` ${l.unidade}` : ''}</strong>
-            </p>
-          </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+              <span style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: b.cor, fontVariantNumeric: 'tabular-nums' }}>{l.quantidade}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: D.text2, marginTop: 3 }}>{l.unidade || 'un'} no lote</span>
+            </div>
+          </Card>
         )
       })}
     </>

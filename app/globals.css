@@ -50,13 +50,16 @@ body {
 }
 
 /* ── Barra inferior (app/components/ui/BottomNav.tsx) ──
-   --bottom-nav-h = altura que a barra ocupa agora (0 quando não existe ou está
-   escondida pelo teclado). Elementos fixos no rodapé usam bottom: var(--bottom-nav-h). */
-body:has([data-bottom-nav]:not([data-oculta])) {
-  --bottom-nav-h: calc(68px + env(safe-area-inset-bottom));
+   Medidas fixas da barra. As variáveis de espaço (--bottomnav-h, --bottomnav-topo,
+   --bottomnav-safe) são publicadas pelo próprio BottomNav só enquanto ele está
+   visível; sem barra (login, reset-senha, teclado aberto) elas não existem → 0. */
+:root {
+  --bottomnav-barra: 68px; /* altura da barra (sem a safe area) */
+  --bottomnav-bump: 16px;  /* quanto o botão central do scanner sobe acima da barra */
 }
+/* Espaço no fim de TODAS as páginas para a barra não cobrir o último item */
 body {
-  padding-bottom: var(--bottom-nav-h, 0px);
+  padding-bottom: var(--bottomnav-h, 0px);
 }
 @media print {
   [data-bottom-nav] { display: none !important; }

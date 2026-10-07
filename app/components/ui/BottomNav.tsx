@@ -14,6 +14,19 @@ import { COR, gradiente, tituloSecaoStyle as tituloSecao, visual } from './visua
 // Fica no layout raiz; some nas telas de autenticação.
 
 const ROTAS_SEM_BARRA = ['/login', '/reset-senha']
+
+// Espaço que a barra ocupa, publicado em variáveis CSS SÓ enquanto ela está
+// visível (sem barra no login/reset-senha nem com o teclado aberto → sem as
+// variáveis → espaço 0). Medidas da barra/botão: --bottomnav-barra e
+// --bottomnav-bump em app/globals.css.
+//   --bottomnav-h    fim do conteúdo: barra + botão central + safe area + 16px de folga
+//                    (usado no padding-bottom do body, em globals.css)
+//   --bottomnav-topo onde barras fixas da página devem ficar (bottom), acima da barra e do botão
+//   --bottomnav-safe a safe area já fica por conta da barra: barras fixas acima dela não somam de novo
+const VARIAVEIS_BARRA = `:root{` +
+  `--bottomnav-h:calc(var(--bottomnav-barra) + var(--bottomnav-bump) + env(safe-area-inset-bottom) + 16px);` +
+  `--bottomnav-topo:calc(var(--bottomnav-barra) + var(--bottomnav-bump) + env(safe-area-inset-bottom));` +
+  `--bottomnav-safe:0px}`
 const EVENTO_ABRIR_MENU = 'fluxio:abrir-menu'
 
 /** Abre a folha de Menu/Perfil da barra (ex.: avatar da tela inicial). */
@@ -141,7 +154,7 @@ export default function BottomNav() {
     <>
       {/* ── AVISOS DO SCANNER ── */}
       {(scannerNaoEncontrado || buscandoCodigo) && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(100px + env(safe-area-inset-bottom))', display: 'flex', justifyContent: 'center', zIndex: 45, pointerEvents: 'none' }}>
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(var(--bottomnav-topo, 0px) + 12px)', display: 'flex', justifyContent: 'center', zIndex: 45, pointerEvents: 'none' }}>
           <p style={{
             background: D.card, border: `1px solid ${D.border}`, borderRadius: 12, padding: '8px 14px', margin: 0, fontSize: 12, fontWeight: 600,
             color: scannerNaoEncontrado ? COR.vermelho : D.text2, boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
@@ -151,7 +164,10 @@ export default function BottomNav() {
         </div>
       )}
 
-      {/* ── BARRA ── (data-bottom-nav: o globals.css reserva o espaço dela no fim da página) */}
+      {/* Variáveis de espaço da barra (ver VARIAVEIS_BARRA) — somem com o teclado aberto */}
+      {!teclado && <style>{VARIAVEIS_BARRA}</style>}
+
+      {/* ── BARRA ── */}
       <nav
         data-bottom-nav=""
         data-oculta={teclado ? '' : undefined}
@@ -165,14 +181,14 @@ export default function BottomNav() {
         }}
       >
         {me && (
-          <div style={{ maxWidth: 480, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', height: 68 }}>
+          <div style={{ maxWidth: 480, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', height: 'var(--bottomnav-barra)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-around' }}>
               {naInicio
                 ? <ItemBarra icone="home" label="Início" ativo onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
                 : <ItemBarra icone="home" label="Início" href="/" />}
               {vis['estoque'] && <ItemBarra icone="box" label="Estoque" href="/estoque" ativo={pathname.startsWith('/estoque')} />}
             </div>
-            <div style={{ padding: '0 12px' }}>
+            <div style={{ position: 'relative', width: 88, alignSelf: 'stretch' }}>
               <BarcodeCameraButton
                 onScanned={aoEscanear}
                 instanceId="bottom-nav-scanner"
@@ -181,7 +197,8 @@ export default function BottomNav() {
                     onClick={abrir}
                     aria-label="Escanear produto"
                     style={{
-                      width: 64, height: 64, marginTop: -30, borderRadius: 20, border: 'none', cursor: 'pointer',
+                      position: 'absolute', left: 12, top: 'calc(-1 * var(--bottomnav-bump))',
+                      width: 64, height: 64, borderRadius: 20, border: 'none', cursor: 'pointer',
                       background: `linear-gradient(135deg, ${COR.roxo}, ${COR.indigo})`, color: '#fff',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: '0 8px 28px rgba(139,92,246,0.45)',
@@ -198,7 +215,7 @@ export default function BottomNav() {
             </div>
           </div>
         )}
-        {!me && <div style={{ height: 68 }} />}
+        {!me && <div style={{ height: 'var(--bottomnav-barra)' }} />}
       </nav>
 
       {/* ── FOLHA MENU / PERFIL ── */}
