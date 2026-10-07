@@ -48,3 +48,19 @@ body {
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Barra inferior (app/components/ui/BottomNav.tsx) ──
+   --bottom-nav-h = altura que a barra ocupa agora (0 quando não existe ou está
+   escondida pelo teclado). Elementos fixos no rodapé usam bottom: var(--bottom-nav-h). */
+body:has([data-bottom-nav]:not([data-oculta])) {
+  --bottom-nav-h: calc(68px + env(safe-area-inset-bottom));
+}
+body {
+  padding-bottom: var(--bottom-nav-h, 0px);
+}
+@media print {
+  [data-bottom-nav] { display: none !important; }
+  body { padding-bottom: 0 !important; }
+}
+
+.sem-scrollbar::-webkit-scrollbar { display: none; }

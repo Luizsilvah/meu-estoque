@@ -18,11 +18,12 @@ type Item = {
     nome: string
     unidade: string
     foto_url: string | null
+    controla_validade?: boolean
     fornecedores: { nome: string } | null
   } | null
 }
 
-import { Validade, diasAteVencer } from '@/app/lib/validades'
+import { Validade, diasAteVencer, controlaValidade } from '@/app/lib/validades'
 
 const inputStyle: React.CSSProperties = {
   background: D.input, border: `1px solid ${D.border}`, borderRadius: 12,
@@ -104,7 +105,7 @@ function TransferenciaContent() {
 
   async function confirmar() {
     if (!selecionado) return
-    const vals = [...(validadesPorProduto[selecionado.produto_id] ?? [])]
+    const vals = controlaValidade(selecionado.produtos) ? [...(validadesPorProduto[selecionado.produto_id] ?? [])] : []
     const hasLotes = vals.length > 0
     const totalLotes = Object.values(lotesSelecionados).reduce((s, q) => s + q, 0)
     const qtd = hasLotes ? totalLotes : Math.max(1, Number(quantidade) || 1)
@@ -217,7 +218,9 @@ function TransferenciaContent() {
         const disponivelOrigem = direcao === 'cozinha' ? principal : cozinha
         const qtd = Math.max(1, Number(quantidade) || 1)
         const semEstoque = disponivelOrigem === 0
-        const vals = [...(validadesPorProduto[selecionado.produto_id] ?? [])].sort((a, b) => a.data_validade.localeCompare(b.data_validade))
+        // Produto que não controla validade: sem escolha de lotes, só a quantidade
+        const controla = controlaValidade(selecionado.produtos)
+        const vals = controla ? [...(validadesPorProduto[selecionado.produto_id] ?? [])].sort((a, b) => a.data_validade.localeCompare(b.data_validade)) : []
 
         return (
           <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.6)' }}
@@ -250,7 +253,7 @@ function TransferenciaContent() {
                 const hasLoteSection = vals.length > 0 || semValidadeDisp > 0
                 const totalLotes = Object.values(lotesSelecionados).reduce((s, q) => s + q, 0)
 
-                if (!hasLoteSection) return null
+                if (!controla || !hasLoteSection) return null
                 return (
                   <div style={{ marginBottom: 20 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 10, padding: '8px 12px', marginBottom: 10 }}>
@@ -372,7 +375,7 @@ function TransferenciaContent() {
               {(() => {
                 const somaLotes = vals.reduce((s, v) => s + v.quantidade, 0)
                 const semValidadeDisp = Math.max(0, selecionado.qtd_atual - somaLotes)
-                const hasLotes = vals.length > 0 || semValidadeDisp > 0
+                const hasLotes = controla && (vals.length > 0 || semValidadeDisp > 0)
                 const totalLotes = Object.values(lotesSelecionados).reduce((s, q) => s + q, 0)
                 const qtdEfetiva = hasLotes ? totalLotes : qtd
                 const desabilitado = transferindo || semEstoque || qtdEfetiva <= 0 || qtdEfetiva > disponivelOrigem || (hasLotes && totalLotes === 0)

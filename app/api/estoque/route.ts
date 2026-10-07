@@ -14,7 +14,7 @@ export async function GET() {
   // da tabela não aparecem em nenhum deles.
   const { data, error } = await supabase
     .from('estoque')
-    .select('id, produto_id, qtd_atual, qtd_base, qtd_max, qtd_cozinha, produtos(id, nome, unidade, fornecedor_id, foto_url, codigo_barras, preco_custo, fornecedores(nome))')
+    .select('id, produto_id, qtd_atual, qtd_base, qtd_max, qtd_cozinha, produtos(id, nome, unidade, fornecedor_id, foto_url, codigo_barras, preco_custo, controla_validade, fornecedores(nome))')
 
   if (error) return Response.json({ erro: error.message }, { status: 500 })
   return Response.json(data)

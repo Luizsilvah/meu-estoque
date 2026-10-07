@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import BarcodeCameraButton from '../components/BarcodeCameraButton'
+import Toggle from '../components/ui/Toggle'
 
 import { D } from '@/app/lib/theme'
 import { invalidarEstoqueCache } from '@/app/lib/estoqueCache'
@@ -44,6 +45,7 @@ export default function Cadastro() {
   const [qtdMax, setQtdMax] = useState('')
   const [codigoBarras, setCodigoBarras] = useState('')
   const [precoCusto, setPrecoCusto] = useState('')
+  const [controlaValidade, setControlaValidade] = useState(true)
   const [salvandoProduto, setSalvandoProduto] = useState(false)
   const [feedbackProduto, setFeedbackProduto] = useState<{ msg: string; ok: boolean } | null>(null)
 
@@ -67,6 +69,7 @@ export default function Cadastro() {
           qtd_atual: Number(qtdAtual) || 0, qtd_base: Number(qtdBase) || 0, qtd_max: Number(qtdMax) || 0,
           codigo_barras: codigoBarras.trim() || null,
           preco_custo: precoCusto !== '' ? Number(precoCusto) : null,
+          controla_validade: controlaValidade,
         }),
       })
       const json = await res.json()
@@ -74,7 +77,7 @@ export default function Cadastro() {
       invalidarEstoqueCache()
       setFeedbackProduto({ msg: `Produto "${json.nome}" cadastrado!`, ok: true })
       setNomeProduto(''); setFornecedorId(''); setUnidade('')
-      setQtdAtual(''); setQtdBase(''); setQtdMax(''); setCodigoBarras(''); setPrecoCusto('')
+      setQtdAtual(''); setQtdBase(''); setQtdMax(''); setCodigoBarras(''); setPrecoCusto(''); setControlaValidade(true)
     } catch {
       setFeedbackProduto({ msg: 'Erro de conexão', ok: false })
     } finally {
@@ -204,6 +207,13 @@ export default function Cadastro() {
                 <input style={inputStyle} placeholder="Ex: kg, un, cx, L" value={unidade}
                   onChange={(e) => setUnidade(e.target.value)} required />
               </div>
+
+              <Toggle
+                label="Controla validade"
+                descricao={controlaValidade ? 'Pede a data de validade nas entradas e saídas.' : 'Embalagem, copo, colher... entra e sai sem data de validade.'}
+                ligado={controlaValidade}
+                onChange={setControlaValidade}
+              />
 
               <div>
                 <label style={labelStyle}>Código de barras (opcional)</label>

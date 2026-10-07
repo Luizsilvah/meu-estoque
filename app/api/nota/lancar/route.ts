@@ -60,6 +60,16 @@ export async function POST(req: Request) {
     .single()
   const usuario_nome = perfil?.nome ?? user.email?.split('@')[0] ?? null
 
+  // Produtos existentes que não controlam validade: entram sem lote (a função
+  // nota_lancar_item também ignora os lotes deles). Lido do banco, não do cliente.
+  const idsExistentes = [...new Set(itens.map((i) => i.produto_id).filter((id): id is string => !!id))]
+  const semValidade = new Set<string>()
+  if (idsExistentes.length > 0) {
+    const { data: semControle } = await admin
+      .from('produtos').select('id').in('id', idsExistentes).eq('controla_validade', false)
+    for (const p of semControle ?? []) semValidade.add(p.id as string)
+  }
+
   const lancados: { nome: string; produto_id: string; quantidade: number }[] = []
   const falhas: { nome: string; erro: string }[] = []
 
@@ -69,17 +79,20 @@ export async function POST(req: Request) {
       const quantidade = Number(item.quantidade)
       if (!quantidade || quantidade <= 0) throw new Error('Quantidade inválida')
 
-      const lotes = Array.isArray(item.lotes) ? item.lotes : []
-      if (lotes.length === 0) throw new Error('Item sem validade')
-      for (const l of lotes) {
-        if (!l.data_validade) throw new Error('Lote sem data de validade')
-        if (dataNoPassado(l.data_validade)) {
-          throw new Error(`Validade no passado (${l.data_validade}) — verifique o ano`)
+      const controla = !(item.produto_id && semValidade.has(item.produto_id))
+      const lotes = !controla ? [] : Array.isArray(item.lotes) ? item.lotes : []
+      if (controla) {
+        if (lotes.length === 0) throw new Error('Item sem validade')
+        for (const l of lotes) {
+          if (!l.data_validade) throw new Error('Lote sem data de validade')
+          if (dataNoPassado(l.data_validade)) {
+            throw new Error(`Validade no passado (${l.data_validade}) — verifique o ano`)
+          }
         }
-      }
-      const somaLotes = lotes.reduce((s, l) => s + (Number(l.quantidade) || 0), 0)
-      if (somaLotes !== quantidade) {
-        throw new Error(`Soma dos lotes (${somaLotes}) diferente da quantidade (${quantidade})`)
+        const somaLotes = lotes.reduce((s, l) => s + (Number(l.quantidade) || 0), 0)
+        if (somaLotes !== quantidade) {
+          throw new Error(`Soma dos lotes (${somaLotes}) diferente da quantidade (${quantidade})`)
+        }
       }
 
       // Valida os dados do produto novo aqui (antes da RPC) para manter a mesma

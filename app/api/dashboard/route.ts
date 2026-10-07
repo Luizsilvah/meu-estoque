@@ -18,7 +18,7 @@ export async function GET() {
   // validades divergentes (views no banco) em paralelo para economizar tempo
   const [{ data: estoque, error: erroEstoque }, { data: validades, error: erroVal }, { data: previsaoCompras }, { count: countDivergentes, error: erroDivergentes }] =
     await Promise.all([
-      admin.from('estoque').select('produto_id, qtd_atual, qtd_base, qtd_max, produtos(nome, preco_custo)'),
+      admin.from('estoque').select('produto_id, qtd_atual, qtd_base, qtd_max, produtos(nome, preco_custo, controla_validade)'),
       admin
         .from('validades')
         .select('data_validade, produto_id, produtos(nome)')
@@ -68,9 +68,12 @@ export async function GET() {
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 
   // Só alertamos sobre lotes de produtos que ainda têm estoque físico (qtd_atual > 0).
-  // Lotes de produtos zerados ou já removidos ("órfãos") não geram alerta de validade.
+  // Lotes de produtos zerados ou já removidos ("órfãos") não geram alerta de validade,
+  // nem os de produtos que não controlam validade.
   const idsComEstoqueAtivo = new Set(
-    (estoque ?? []).filter((item) => item.qtd_atual > 0).map((item) => item.produto_id),
+    (estoque ?? [])
+      .filter((item) => item.qtd_atual > 0 && (item.produtos as { controla_validade?: boolean } | null)?.controla_validade !== false)
+      .map((item) => item.produto_id),
   )
   const validadesAtivas = erroVal
     ? []

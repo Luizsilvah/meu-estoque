@@ -30,3 +30,8 @@ export function proximaValidade(validades: Validade[]): { texto: string; cor: st
   if (dias <= 30) return { texto: `${data} (${dias}d)`, cor: '#F59E0B' }
   return { texto: data, cor: 'var(--text2)' }
 }
+
+/** produtos.controla_validade — ausente/null conta como true (padrão da coluna). */
+export function controlaValidade(produto: { controla_validade?: boolean | null } | null | undefined): boolean {
+  return produto?.controla_validade !== false
+}

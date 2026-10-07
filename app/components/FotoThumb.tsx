@@ -1,6 +1,7 @@
 'use client'
 import Image from 'next/image'
 import { D } from '@/app/lib/theme'
+import Icon from './ui/Icon'
 
 type Props = {
   src: string | null
@@ -24,8 +25,8 @@ export default function FotoThumb({ src, size = 40, radius = 10, style }: Props)
     )
   }
   return (
-    <div style={{ ...base, background: D.input, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: Math.round(size * 0.45) }}>
-      📦
+    <div style={{ ...base, background: D.input, color: D.text2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Icon nome="box" size={Math.round(size * 0.46)} traco={1.8} />
     </div>
   )
 }

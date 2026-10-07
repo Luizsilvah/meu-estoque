@@ -2,10 +2,11 @@
 import { useRef, useState, useEffect, ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
+import { controlaValidade } from '@/app/lib/validades'
 
 type ProdutoEstoque = {
   produto_id: string
-  produtos: { nome: string; unidade: string } | null
+  produtos: { nome: string; unidade: string; controla_validade?: boolean } | null
 }
 
 type Fornecedor = { id: string; nome: string }
@@ -236,6 +237,13 @@ export default function NotaPage() {
     }
   }
 
+  // Produto do sistema que não controla validade: entra sem lote (produto novo
+  // criado pela nota sempre controla — padrão da coluna).
+  function semValidade(it: ItemEditavel): boolean {
+    return it.decisao === 'existente' && !!it.produto_id_sel &&
+      !controlaValidade(estoque.find((e) => e.produto_id === it.produto_id_sel)?.produtos)
+  }
+
   // ── Validação por item ──────────────────────────────────────────────────────
   function itemValido(it: ItemEditavel): { ok: boolean; msg?: string } {
     if (it.decisao === 'ignorar') return { ok: true }
@@ -250,6 +258,7 @@ export default function NotaPage() {
       }
     }
 
+    if (semValidade(it)) return { ok: true }
     if (it.lotes.length === 0) return { ok: false, msg: 'Adicione ao menos um lote de validade' }
     const hoje = hojeISO()
     for (const l of it.lotes) {
@@ -288,7 +297,7 @@ export default function NotaPage() {
           preco_custo: i.novoProduto.preco_custo !== '' ? Number(i.novoProduto.preco_custo) : null,
         } : null,
         quantidade: i.quantidade,
-        lotes: [...porData.entries()].map(([data_validade, quantidade]) => ({ data_validade, quantidade })),
+        lotes: semValidade(i) ? [] : [...porData.entries()].map(([data_validade, quantidade]) => ({ data_validade, quantidade })),
       }
     })
 
@@ -640,6 +649,9 @@ export default function NotaPage() {
                           </div>
                         </div>
 
+                        {semValidade(item) ? (
+                          <p className="text-xs text-gray-500">Este produto não controla validade — entra sem data.</p>
+                        ) : (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">
                             Validade{item.lotes.length > 1 ? ' (lotes)' : ''}
@@ -685,6 +697,7 @@ export default function NotaPage() {
                             + adicionar lote
                           </button>
                         </div>
+                        )}
                       </>
                     )}
 
@@ -700,7 +713,7 @@ export default function NotaPage() {
       </div>
 
       {/* Rodapé fixo */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-50 border-t border-gray-200">
+      <div className="fixed left-0 right-0 p-4 bg-gray-50 border-t border-gray-200" style={{ bottom: 'var(--bottom-nav-h, 0px)' }}>
         <div className="max-w-md mx-auto space-y-2">
           {pendentes > 0 && (
             <p className="text-orange-600 text-xs text-center">

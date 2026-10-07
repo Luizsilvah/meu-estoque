@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
   const { data: produto, error } = await supabase
     .from('produtos')
-    .select('id, nome, unidade, fornecedores(nome), estoque(id, qtd_atual, qtd_cozinha, qtd_base, qtd_max)')
+    .select('id, nome, unidade, controla_validade, fornecedores(nome), estoque(id, qtd_atual, qtd_cozinha, qtd_base, qtd_max)')
     .eq('codigo_barras', codigo)
     .single()
 
@@ -33,6 +33,7 @@ export async function GET(request: Request) {
     qtd_max: est?.qtd_max ?? 0,
     nome: produto.nome,
     unidade: produto.unidade,
+    controla_validade: produto.controla_validade !== false,
     fornecedor_nome: (produto.fornecedores as any)?.nome ?? null,
   })
 }

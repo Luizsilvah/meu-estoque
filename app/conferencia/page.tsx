@@ -18,11 +18,12 @@ type Item = {
     nome: string
     unidade: string
     foto_url: string | null
+    controla_validade?: boolean
     fornecedores: { nome: string } | null
   } | null
 }
 
-import { Validade, diasAteVencer, proximaValidade } from '@/app/lib/validades'
+import { Validade, diasAteVencer, proximaValidade, controlaValidade } from '@/app/lib/validades'
 
 type MotivoPendente = {
   item: Item
@@ -264,6 +265,12 @@ export default function Conferencia() {
     const prodId = motivoPendente.item.produtos?.id ?? ''
     const vals = lotesOrdenados(validadesPorProduto[prodId] ?? [])
     const { diff } = motivoPendente
+
+    // Produto que não controla validade: só a quantidade, sem modal de lote.
+    if (!controlaValidade(motivoPendente.item.produtos)) {
+      await finalizarMotivo(tipo, [], [])
+      return
+    }
 
     // Aumentou (entrada/correção): sempre abre o modal de lotes, com 1 linha
     // já trazendo o delta inteiro — o usuário só precisa pôr a data.

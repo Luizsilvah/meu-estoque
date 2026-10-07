@@ -311,7 +311,7 @@ export default function Chat() {
   const membroIds = new Set(membros.map((m) => m.usuario_id))
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: D.bg }}>
+    <div style={{ display: 'flex', height: 'calc(100vh - var(--bottom-nav-h, 0px))', overflow: 'hidden', background: D.bg }}>
 
       {/* Sidebar */}
       <div style={{

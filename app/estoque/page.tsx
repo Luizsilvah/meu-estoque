@@ -1,9 +1,15 @@
 'use client'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import BarcodeCameraButton from '../components/BarcodeCameraButton'
+import Page from '../components/ui/Page'
+import PageHeader, { BotaoAcao } from '../components/ui/PageHeader'
+import SearchBar from '../components/ui/SearchBar'
+import Chips, { type Chip } from '../components/ui/Chips'
+import Card, { CARD_THUMB } from '../components/ui/Card'
+import Icon from '../components/ui/Icon'
+import Toggle from '../components/ui/Toggle'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
@@ -27,13 +33,14 @@ type ItemEstoque = {
     foto_url: string | null
     codigo_barras: string | null
     preco_custo: number | null
+    controla_validade?: boolean
     fornecedores: { nome: string } | null
   } | null
 }
 
 type Fornecedor = { id: string; nome: string }
 
-import { Validade, diasAteVencer, badgeValidade } from '@/app/lib/validades'
+import { Validade, diasAteVencer, formatarDataCurta, controlaValidade } from '@/app/lib/validades'
 
 type AbaModal = 'produto' | 'validades'
 
@@ -64,7 +71,9 @@ function EstoqueContent() {
 
   const [editando, setEditando] = useState<ItemEstoque | null>(null)
   const [abaModal, setAbaModal] = useState<AbaModal>('produto')
-  const [form, setForm] = useState({ nome: '', fornecedor_id: '', unidade: '', qtd_base: '', qtd_max: '', codigo_barras: '', preco_custo: '', qtd_atual: '' })
+  const [form, setForm] = useState({ nome: '', fornecedor_id: '', unidade: '', qtd_base: '', qtd_max: '', codigo_barras: '', preco_custo: '', qtd_atual: '', controla_validade: true })
+  // Desligar "Controla validade" com lotes cadastrados: pede confirmação antes
+  const [confirmarDesligarValidade, setConfirmarDesligarValidade] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null)
   // Quantidade mudou no "Editar produto": modal de lotes antes de gravar
@@ -100,7 +109,7 @@ function EstoqueContent() {
   const [feedbackTransferirModal, setFeedbackTransferirModal] = useState<{ msg: string; ok: boolean } | null>(null)
 
   const [modalNovoProduto, setModalNovoProduto] = useState(false)
-  const [formNovo, setFormNovo] = useState({ nome: '', fornecedor_id: '', unidade: '', codigo_barras: '', qtd_base: '0', qtd_max: '0', qtd_atual: '0' })
+  const [formNovo, setFormNovo] = useState({ nome: '', fornecedor_id: '', unidade: '', codigo_barras: '', qtd_base: '0', qtd_max: '0', qtd_atual: '0', controla_validade: true })
   const [salvandoNovo, setSalvandoNovo] = useState(false)
   const [feedbackNovo, setFeedbackNovo] = useState<{ msg: string; ok: boolean } | null>(null)
   const [mostrarNovoFornecedor, setMostrarNovoFornecedor] = useState(false)
@@ -191,8 +200,9 @@ function EstoqueContent() {
       codigo_barras: item.produtos?.codigo_barras ?? '',
       preco_custo: item.produtos?.preco_custo != null ? String(item.produtos.preco_custo) : '',
       qtd_atual: String(item.qtd_atual),
+      controla_validade: controlaValidade(item.produtos),
     })
-    setFeedback(null); setConfirmarApagar(false); setSenhaApagar('')
+    setFeedback(null); setConfirmarApagar(false); setSenhaApagar(''); setConfirmarDesligarValidade(false)
     setQtdTransferirModal(''); setFeedbackTransferirModal(null)
     if (item.produtos?.id) {
       setLoadingVal(true); setValidades([]); setNovaData(''); setNovaQtd('1'); setEditandoValidade(null)
@@ -265,6 +275,8 @@ function EstoqueContent() {
     const delta = Math.max(0, Math.floor(Number(form.qtd_atual) || 0)) - editando.qtd_atual
     if (delta !== 0) {
       setFeedback(null); setFeedbackAjuste(null)
+      // Sem controle de validade: grava a quantidade direto, sem escolher lote
+      if (!form.controla_validade) { void gravar({ lotesAdd: [], lotesRemover: [] }); return }
       setAjusteQtd({ delta })
       return
     }
@@ -274,7 +286,7 @@ function EstoqueContent() {
   async function gravar(lotes: { lotesAdd: LoteAdd[]; lotesRemover: LoteRemover[] } | null) {
     if (!editando) return
     // Mensagens aparecem no modal que está aberto (o de lotes, se houver ajuste)
-    const setMsg = lotes ? setFeedbackAjuste : setFeedback
+    const setMsg = ajusteQtd ? setFeedbackAjuste : setFeedback
     setSalvando(true); setMsg(null)
     try {
       const res = await fetch('/api/produto', {
@@ -285,11 +297,17 @@ function EstoqueContent() {
           qtd_base: Number(form.qtd_base), qtd_max: Number(form.qtd_max),
           codigo_barras: form.codigo_barras.trim() || null,
           preco_custo: form.preco_custo !== '' ? Number(form.preco_custo) : null,
+          controla_validade: form.controla_validade,
         }),
       })
       const json = await res.json()
       if (!res.ok || json.erro) { setMsg({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
       invalidarEstoqueCache()
+      // Desligou "Controla validade": a API apagou os lotes deste produto
+      if (!form.controla_validade) {
+        setValidades([])
+        setValidadesPorProduto((prev) => ({ ...prev, [editando.produto_id]: [] }))
+      }
 
       // Quantidade + lotes numa transação só. 'correcao' não conta como
       // consumo na previsão de compras. Se o total ficar abaixo da cozinha,
@@ -336,6 +354,7 @@ function EstoqueContent() {
         unidade: form.unidade,
         codigo_barras: form.codigo_barras.trim() || null,
         preco_custo: form.preco_custo !== '' ? Number(form.preco_custo) : null,
+        controla_validade: form.controla_validade,
         fornecedores: fornNome ? { nome: fornNome } : null,
       }
       setDados((prev) => prev.map((item) =>
@@ -557,6 +576,7 @@ function EstoqueContent() {
           unidade: formNovo.unidade.trim(), codigo_barras: formNovo.codigo_barras.trim() || null,
           qtd_base: Number(formNovo.qtd_base) || 0, qtd_max: Number(formNovo.qtd_max) || 0,
           qtd_atual: Number(formNovo.qtd_atual) || 0,
+          controla_validade: formNovo.controla_validade,
         }),
       })
       const json = await res.json()
@@ -586,64 +606,55 @@ function EstoqueContent() {
     </div>
   )
 
+  const qtdPrecisaPedir = dados.filter((i) => i.qtd_atual <= i.qtd_base).length
+  // Chips: o "Pedir N" usa o mesmo filtro ?filtro=pedir que já vinha do dashboard
+  const irParaFiltro = (f: string | null) => router.replace(f ? `/estoque?filtro=${f}` : '/estoque')
+  const chips: Chip[] = [
+    {
+      chave: 'todos', label: 'Todos', ativo: filtroFornecedor === 'Todos' && !filtroUrl,
+      onClick: () => { setFiltroFornecedor('Todos'); if (filtroUrl) irParaFiltro(null) },
+    },
+    { chave: 'pedir', label: `Pedir ${qtdPrecisaPedir}`, ativo: filtroUrl === 'pedir', onClick: () => irParaFiltro(filtroUrl === 'pedir' ? null : 'pedir') },
+    ...fornecedoresFiltro.filter((f) => f !== 'Todos').map((f) => ({
+      chave: `forn:${f}`, label: f, ativo: filtroFornecedor === f, onClick: () => setFiltroFornecedor(filtroFornecedor === f ? 'Todos' : f),
+    })),
+  ]
+
   return (
-    <div style={{ minHeight: '100vh', background: D.bg }}>
+    <Page>
 
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }}>
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Estoque</h1>
-            <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>{dadosFiltrados.length} itens</p>
-          </div>
-          <button
-            onClick={() => { setModalNovoProduto(true); setFormNovo({ nome: '', fornecedor_id: '', unidade: '', codigo_barras: '', qtd_base: '0', qtd_max: '0', qtd_atual: '0' }); setFeedbackNovo(null) }}
-            style={{ background: '#6366F1', border: 'none', borderRadius: 14, width: 42, height: 42, fontSize: 24, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>
-            +
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        titulo="Estoque"
+        subtitulo={`${dadosFiltrados.length} produto${dadosFiltrados.length === 1 ? '' : 's'}`}
+        acao={
+          <BotaoAcao icone="plus" label="Novo produto"
+            onClick={() => { setModalNovoProduto(true); setFormNovo({ nome: '', fornecedor_id: '', unidade: '', codigo_barras: '', qtd_base: '0', qtd_max: '0', qtd_atual: '0', controla_validade: true }); setFeedbackNovo(null) }} />
+        }
+      />
 
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-        {/* Chip de filtro ativo vindo do dashboard */}
-        {filtroUrl && (() => {
-          const labels: Record<string, string> = { pedir: '🔴 Precisa pedir', ok: '✅ Estoque OK', vencendo: '🟠 Vencendo em 7d' }
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, background: 'rgba(99,102,241,0.12)', color: 'var(--accent-text)', border: '1px solid rgba(99,102,241,0.25)' }}>
-                {labels[filtroUrl] ?? filtroUrl}
-              </span>
-              <button onClick={() => router.push('/estoque')}
-                style={{ background: 'none', border: 'none', color: D.muted, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 8 }}>
-                ✕ Limpar
-              </button>
-            </div>
-          )
-        })()}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Busca + scanner */}
-        <div style={{ position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--muted)' }}>🔍</span>
-          <input type="text" placeholder="Buscar produto ou bipe o código..."
-            value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={handleBuscaKeyDown}
-            style={{ width: '100%', background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: '12px 48px 12px 36px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box' }}
-          />
-          <BarcodeCameraButton instanceId="estoque-busca-scanner"
-            onScanned={(codigo) => { setBusca(''); abrirPorCodigo(codigo) }} />
-        </div>
+        <SearchBar
+          value={busca} onChange={setBusca} onKeyDown={handleBuscaKeyDown}
+          scanner={{ instanceId: 'estoque-busca-scanner', onScanned: (codigo) => { setBusca(''); abrirPorCodigo(codigo) } }}
+        />
 
-        {/* Filtros por fornecedor */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {fornecedoresFiltro.map((f) => (
-            <button key={f} onClick={() => setFiltroFornecedor(f)}
-              style={{ padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, border: `1px solid ${filtroFornecedor === f ? '#6366F1' : D.border}`, cursor: 'pointer',
-                background: filtroFornecedor === f ? 'rgba(99,102,241,0.2)' : D.card,
-                color: filtroFornecedor === f ? 'var(--accent-text)' : D.text2 }}>
-              {f}
+        {/* Pedir + fornecedores */}
+        <Chips itens={chips} />
+
+        {/* Filtro vindo do dashboard (o "pedir" já aparece como chip acima) */}
+        {filtroUrl && filtroUrl !== 'pedir' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, background: 'var(--accent-bg)', color: 'var(--accent-text)', border: '1px solid rgba(99,102,241,0.25)' }}>
+              {({ ok: 'Estoque OK', vencendo: 'Vencendo em 7 dias' } as Record<string, string>)[filtroUrl] ?? filtroUrl}
+            </span>
+            <button onClick={() => irParaFiltro(null)}
+              style={{ background: 'none', border: 'none', color: D.text2, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+              <Icon nome="close" size={14} /> Limpar
             </button>
-          ))}
-        </div>
+          </div>
+        )}
 
         {/* Cards */}
         {dadosFiltrados.length === 0 ? (
@@ -653,67 +664,74 @@ function EstoqueContent() {
           const qtdPedir = precisaPedir ? item.qtd_max - item.qtd_atual : 0
           const prodId = item.produtos?.id ?? ''
           const vals = validadesPorProduto[prodId] ?? []
-          const badge = badgeValidade(vals)
           const qtdPrincipal = item.qtd_atual - (item.qtd_cozinha ?? 0)
-          // Crítico já é coberto pelo badge "Pedir N" acima (mesma condição qtd_atual
+          // Crítico já é coberto pelo selo "Pedir N" (mesma condição qtd_atual
           // <= qtd_base). O amarelo avisa quem ainda não está no mínimo, mas vai ficar
           // abaixo dele antes da próxima quinta — ver vw_previsao_compras.
           const comprarNaQuinta = !precisaPedir && statusCompra[prodId] === 'COMPRAR_QUINTA'
+          // Cor da quantidade: vermelho = pedir; amarelo = perto do mínimo
+          // (até 20% acima dele, ou marcado para comprar na quinta); verde = ok.
+          const pertoDoMinimo = !precisaPedir && (comprarNaQuinta || item.qtd_atual <= item.qtd_base * 1.2)
+          const corQtd = precisaPedir ? '#EF4444' : pertoDoMinimo ? '#F59E0B' : '#10B981'
+          // Validade mais próxima: cinza; laranja até 7 dias; vermelho vencido/hoje
+          const proxima = [...vals].sort((a, b) => a.data_validade.localeCompare(b.data_validade))[0]
+          const dias = proxima ? diasAteVencer(proxima.data_validade) : null
+          const validade = proxima == null || dias == null ? null
+            : dias < 0 ? { texto: 'Vencido', cor: '#EF4444' }
+            : dias === 0 ? { texto: 'Vence hoje', cor: '#EF4444' }
+            : dias <= 7 ? { texto: `Vence em ${dias}d`, cor: '#F97316' }
+            : { texto: `Val. ${formatarDataCurta(proxima.data_validade)}`, cor: D.text2 }
 
           return (
-            <div key={item.id} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, overflow: 'hidden' }}>
+            <Card key={item.id}>
               <button onClick={() => abrirModal(item)}
-                style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', padding: '12px 14px', width: '100%', textAlign: 'left', cursor: 'pointer' }}>
-                <FotoThumb src={item.produtos?.foto_url ?? null} radius={12} style={{ marginRight: 12 }} />
+                style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <FotoThumb src={item.produtos?.foto_url ?? null} size={CARD_THUMB} radius={14} />
 
-                <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-                  <p style={{ color: D.text, fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: D.text, fontWeight: 800, fontSize: 16, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.produtos?.nome ?? '—'}
                   </p>
-                  <p style={{ color: D.text2, fontSize: 12, marginTop: 2 }}>
-                    {item.produtos?.fornecedores?.nome ?? 'Fornecedor desconhecido'} · {item.produtos?.unidade}
-                  </p>
-                  <p style={{ color: D.muted, fontSize: 12, marginTop: 2 }}>Base {item.qtd_base} · Máx {item.qtd_max}</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
+                    <span style={{ color: D.text2, fontSize: 13, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.produtos?.fornecedores?.nome ?? 'Fornecedor desconhecido'} · {item.produtos?.unidade}
+                    </span>
                     {precisaPedir && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
-                        Pedir {qtdPedir}
+                      <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.3px', padding: '2px 7px', borderRadius: 6, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
+                        PEDIR {qtdPedir}
                       </span>
                     )}
                     {comprarNaQuinta && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>
-                        🟡 Comprar na quinta
-                      </span>
-                    )}
-                    {badge && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: badge.bg, color: badge.cor }}>
-                        {badge.texto}
+                      <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.3px', padding: '2px 7px', borderRadius: 6, background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>
+                        COMPRAR NA QUINTA
                       </span>
                     )}
                   </div>
+                  <p style={{ color: D.text2, fontSize: 13, margin: '3px 0 0' }}>
+                    Principal <strong style={{ color: D.text }}>{qtdPrincipal}</strong>
+                    <span style={{ display: 'inline-block', width: 12 }} />
+                    Cozinha <strong style={{ color: D.text }}>{item.qtd_cozinha ?? 0}</strong>
+                  </p>
+                  {validade && (
+                    <p style={{ display: 'flex', alignItems: 'center', gap: 6, color: validade.cor, fontSize: 13, margin: '4px 0 0' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
+                      {validade.texto}
+                    </p>
+                  )}
                 </div>
 
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, color: precisaPedir ? '#EF4444' : '#10B981' }}>
-                    {item.qtd_atual}
-                  </p>
-                  <p style={{ color: D.muted, fontSize: 12, marginTop: 2 }}>{item.produtos?.unidade}</p>
-                </div>
+                <span style={{ fontSize: 34, fontWeight: 800, lineHeight: 1, color: corQtd, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                  {item.qtd_atual}
+                </span>
               </button>
 
-              {/* Breakdown Principal / Cozinha */}
-              <div style={{ padding: '6px 14px 8px', borderTop: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-                <span style={{ fontSize: 12, color: D.text2 }}>🏪 Principal: <strong style={{ color: D.text }}>{qtdPrincipal}</strong></span>
-                <span style={{ fontSize: 12, color: D.text2 }}>🍳 Cozinha: <strong style={{ color: D.text }}>{item.qtd_cozinha ?? 0}</strong></span>
-              </div>
-
-              {/* Transfer button */}
+              {/* Transferência rápida para a cozinha */}
               <button
                 onClick={() => { setModalTransferir(item); setQtdTransferir(''); setFeedbackTransferir(null) }}
-                style={{ width: '100%', border: 'none', borderTop: `1px solid ${D.border}`, background: 'transparent', padding: '8px 14px', fontSize: 12, color: 'var(--accent-text)', fontWeight: 600, cursor: 'pointer', textAlign: 'center' }}>
-                🍳 Transferir para cozinha
+                style={{ width: '100%', border: 'none', borderTop: `1px solid ${D.border}`, background: 'transparent', padding: '9px 16px', fontSize: 13, color: 'var(--accent-text)', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
+                <Icon nome="leftRight" size={16} /> Transferir para cozinha
               </button>
-            </div>
+            </Card>
           )
         })}
       </div>
@@ -760,20 +778,22 @@ function EstoqueContent() {
           <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', overflowY: 'auto', maxHeight: '92vh', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
             <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
 
-            {/* Abas */}
+            {/* Abas — a de Validades só existe se o produto controla validade */}
+            {form.controla_validade && (
             <div style={{ display: 'flex', background: D.input, borderRadius: 14, padding: 4, marginBottom: 20 }}>
               {(['produto', 'validades'] as AbaModal[]).map((a) => (
                 <button key={a} onClick={() => setAbaModal(a)}
                   style={{ flex: 1, padding: '9px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
                     background: abaModal === a ? '#6366F1' : 'transparent',
                     color: abaModal === a ? '#fff' : D.text2 }}>
-                  {a === 'produto' ? '📦 Produto' : '📅 Validades'}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon nome={a === 'produto' ? 'box' : 'calendar'} size={16} />{a === 'produto' ? 'Produto' : 'Validades'}</span>
                 </button>
               ))}
             </div>
+            )}
 
             {/* ABA PRODUTO */}
-            {abaModal === 'produto' && (
+            {(abaModal === 'produto' || !form.controla_validade) && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
                 {/* Foto do produto */}
@@ -794,7 +814,7 @@ function EstoqueContent() {
                         disabled={uploadandoFoto}
                         style={{ position: 'absolute', bottom: -6, right: -6, width: 26, height: 26, borderRadius: 8, background: '#6366F1', border: 'none', color: '#fff', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
-                        ✏️
+                        <Icon nome="edit" size={14} />
                       </button>
                     </div>
                   ) : (
@@ -804,7 +824,7 @@ function EstoqueContent() {
                       disabled={uploadandoFoto}
                       style={{ width: 72, height: 72, borderRadius: 14, background: D.input, border: `2px dashed ${D.border}`, color: D.text2, fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0 }}
                     >
-                      <span style={{ fontSize: 22 }}>📷</span>
+                      <Icon nome="camera" size={22} />
                       <span>{uploadandoFoto ? '...' : 'Foto'}</span>
                     </button>
                   )}
@@ -849,6 +869,44 @@ function EstoqueContent() {
                     value={form.preco_custo} onChange={(e) => setForm((f) => ({ ...f, preco_custo: e.target.value }))} />
                 </div>
 
+                {/* Controla validade — desligar com lotes pede confirmação; os lotes são apagados ao salvar */}
+                <Toggle
+                  label="Controla validade"
+                  descricao={form.controla_validade ? 'Pede a data de validade nas entradas e saídas.' : 'Embalagem, copo, colher... entra e sai sem data de validade.'}
+                  ligado={form.controla_validade}
+                  disabled={loadingVal}
+                  onChange={(ligar) => {
+                    if (ligar) { setConfirmarDesligarValidade(false); setForm((f) => ({ ...f, controla_validade: true })); return }
+                    if (validades.length > 0) { setConfirmarDesligarValidade(true); return }
+                    setForm((f) => ({ ...f, controla_validade: false }))
+                  }}
+                />
+                {confirmarDesligarValidade && (
+                  <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 14, padding: '12px 14px' }}>
+                    <p style={{ color: D.text, fontSize: 14, fontWeight: 700, margin: 0 }}>
+                      Apagar {validades.length === 1 ? 'o lote' : `os ${validades.length} lotes`} de validade deste produto?
+                    </p>
+                    <p style={{ color: D.text2, fontSize: 12, margin: '4px 0 10px' }}>
+                      {validades.reduce((s, v) => s + v.quantidade, 0)} {form.unidade || 'un'} com data cadastrada. Os lotes são apagados quando você tocar em &quot;Salvar alterações&quot;. A quantidade em estoque não muda.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" onClick={() => setConfirmarDesligarValidade(false)}
+                        style={{ flex: 1, padding: '10px', borderRadius: 12, fontSize: 13, fontWeight: 600, border: `1px solid ${D.border}`, background: 'none', color: D.text2, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Manter ligado
+                      </button>
+                      <button type="button" onClick={() => { setConfirmarDesligarValidade(false); setForm((f) => ({ ...f, controla_validade: false })) }}
+                        style={{ flex: 1, padding: '10px', borderRadius: 12, fontSize: 13, fontWeight: 700, border: 'none', background: '#EF4444', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Apagar lotes
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {!form.controla_validade && !confirmarDesligarValidade && validades.length > 0 && (
+                  <p style={{ color: '#EF4444', fontSize: 12, fontWeight: 600, margin: 0 }}>
+                    Ao salvar, {validades.length === 1 ? 'o lote de validade será apagado' : `os ${validades.length} lotes de validade serão apagados`}.
+                  </p>
+                )}
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                   <div><label style={labelStyle}>Qtd atual</label>
                     <input type="number" min="0" style={inputStyle}
@@ -869,8 +927,8 @@ function EstoqueContent() {
                   <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Transferências</p>
                   <div style={{ display: 'flex', background: D.card, borderRadius: 10, padding: 3, gap: 3, marginBottom: 10 }}>
                     {([
-                      { dir: 'cozinha' as const, label: '🏪 → 🍳 Para cozinha' },
-                      { dir: 'principal' as const, label: '🍳 → 🏪 Para principal' },
+                      { dir: 'cozinha' as const, label: 'Para cozinha' },
+                      { dir: 'principal' as const, label: 'Para principal' },
                     ]).map(({ dir, label }) => (
                       <button key={dir} onClick={() => { setDirecaoTransferir(dir); setQtdTransferirModal(''); setFeedbackTransferirModal(null) }}
                         style={{ flex: 1, padding: '7px 4px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
@@ -881,9 +939,9 @@ function EstoqueContent() {
                     ))}
                   </div>
                   <p style={{ color: D.muted, fontSize: 12, marginBottom: 10 }}>
-                    🏪 Principal: <strong style={{ color: D.text }}>{editando.qtd_atual - (editando.qtd_cozinha ?? 0)}</strong>
+                    Principal: <strong style={{ color: D.text }}>{editando.qtd_atual - (editando.qtd_cozinha ?? 0)}</strong>
                     {' · '}
-                    🍳 Cozinha: <strong style={{ color: D.text }}>{editando.qtd_cozinha ?? 0}</strong>
+                    Cozinha: <strong style={{ color: D.text }}>{editando.qtd_cozinha ?? 0}</strong>
                   </p>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input type="number" min="1" placeholder="Qtd" value={qtdTransferirModal}
@@ -942,7 +1000,7 @@ function EstoqueContent() {
             )}
 
             {/* ABA VALIDADES */}
-            {abaModal === 'validades' && (
+            {abaModal === 'validades' && form.controla_validade && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ background: D.input, borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>Nova validade</p>
@@ -971,7 +1029,7 @@ function EstoqueContent() {
                   return (
                     <div style={{ background: diff > 0 ? 'rgba(234,179,8,0.1)' : diff < 0 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.08)', border: `1px solid ${diff > 0 ? 'rgba(234,179,8,0.3)' : diff < 0 ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 12, padding: '10px 14px' }}>
                       <p style={{ fontSize: 13, fontWeight: 700, color: diff > 0 ? '#CA8A04' : diff < 0 ? '#EF4444' : '#10B981' }}>
-                        {diff > 0 ? `⚠️ ${diff} unidade${diff !== 1 ? 's' : ''} sem validade cadastrada` : diff < 0 ? `🔴 Excesso de ${Math.abs(diff)} nas validades` : '✓ Validades conferem com o estoque'}
+                        {diff > 0 ? `${diff} unidade${diff !== 1 ? 's' : ''} sem validade cadastrada` : diff < 0 ? `Excesso de ${Math.abs(diff)} nas validades` : '✓ Validades conferem com o estoque'}
                       </p>
                       <p style={{ fontSize: 11, color: D.text2, marginTop: 2 }}>Total validades: {totalVal} · Estoque: {estoque}</p>
                     </div>
@@ -1012,7 +1070,7 @@ function EstoqueContent() {
                                 <button onClick={() => { setEditandoValidade(v.id); setQtdEditValidade(String(v.quantidade)) }}
                                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                                   <span style={{ fontSize: 12, color: D.text2 }}>Qtd: {v.quantidade}</span>
-                                  <span style={{ fontSize: 10, color: D.muted }}>✏️</span>
+                                  <Icon nome="edit" size={12} cor="var(--muted)" />
                                 </button>
                               )}
                               {vencido && (
@@ -1026,7 +1084,7 @@ function EstoqueContent() {
                             </div>
                           </div>
                           <button onClick={() => apagarValidade(v.id)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: D.muted, marginLeft: 12 }}>🗑</button>
+                            aria-label="Apagar validade" style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.muted, marginLeft: 12, display: 'flex', padding: 4 }}><Icon nome="trash" size={18} /></button>
                         </div>
                       )
                     })}
@@ -1104,6 +1162,13 @@ function EstoqueContent() {
                   onChange={(e) => setFormNovo((f) => ({ ...f, unidade: e.target.value }))} />
               </div>
 
+              <Toggle
+                label="Controla validade"
+                descricao={formNovo.controla_validade ? 'Pede a data de validade nas entradas e saídas.' : 'Embalagem, copo, colher... entra e sai sem data de validade.'}
+                ligado={formNovo.controla_validade}
+                onChange={(ligado) => setFormNovo((f) => ({ ...f, controla_validade: ligado }))}
+              />
+
               <div><label style={labelStyle}>Código de barras</label>
                 <div style={{ position: 'relative' }}>
                   <input type="text" style={{ ...inputStyle, paddingRight: '2.5rem' }}
@@ -1144,6 +1209,6 @@ function EstoqueContent() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   )
 }

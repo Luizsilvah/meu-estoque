@@ -41,7 +41,7 @@ export async function PATCH(request: Request) {
   // nos lotes de validade dessincronizava estoque x validades. A tela de
   // edição grava quantidade + lotes por /api/estoque/conferencia (RPC
   // conferencia_ajustar, tipo 'correcao').
-  const { estoque_id, produto_id, nome, fornecedor_id, unidade, qtd_base, qtd_max, foto_url, codigo_barras, preco_custo } = body ?? {}
+  const { estoque_id, produto_id, nome, fornecedor_id, unidade, qtd_base, qtd_max, foto_url, codigo_barras, preco_custo, controla_validade } = body ?? {}
 
   if (!estoque_id || !produto_id || !nome?.trim() || !fornecedor_id || !unidade?.trim()) {
     return Response.json({ erro: 'Campos obrigatórios ausentes' }, { status: 400 })
@@ -53,6 +53,7 @@ export async function PATCH(request: Request) {
   if (foto_url !== undefined) produtoUpdate.foto_url = foto_url
   if (codigo_barras !== undefined) produtoUpdate.codigo_barras = codigo_barras
   if (preco_custo !== undefined) produtoUpdate.preco_custo = preco_custo != null ? Number(preco_custo) : null
+  if (typeof controla_validade === 'boolean') produtoUpdate.controla_validade = controla_validade
 
   const { error: erroProduto } = await supabase
     .from('produtos')
@@ -70,5 +71,21 @@ export async function PATCH(request: Request) {
 
   if (erroEstoque) return Response.json({ erro: erroEstoque.message }, { status: 500 })
 
-  return Response.json({ ok: true })
+  // Deixou de controlar validade: apaga os lotes do produto (a tela já pediu
+  // confirmação antes de salvar). Feito depois de gravar a opção: se falhar
+  // aqui, os lotes que sobrarem já são ignorados pelas funções do banco e pela
+  // aba Validades, e salvar de novo tenta apagar outra vez.
+  let lotes_apagados = 0
+  if (controla_validade === false) {
+    const { error: erroLotes, count } = await supabase
+      .from('validades')
+      .delete({ count: 'exact' })
+      .eq('produto_id', produto_id)
+    if (erroLotes) {
+      return Response.json({ erro: `Produto salvo, mas os lotes de validade não foram apagados: ${erroLotes.message}` }, { status: 500 })
+    }
+    lotes_apagados = count ?? 0
+  }
+
+  return Response.json({ ok: true, lotes_apagados })
 }

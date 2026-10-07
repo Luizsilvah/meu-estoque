@@ -15,7 +15,7 @@ import Link from 'next/link'
 import { D } from '@/app/lib/theme'
 import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 import { FUNCOES, podeAcessar, type Permissoes } from '@/app/lib/permissoes'
-import { Validade, diasAteVencer } from '@/app/lib/validades'
+import { Validade, diasAteVencer, controlaValidade } from '@/app/lib/validades'
 import ModalLotes, { type LoteAdd, type LoteRemover } from '@/app/components/ModalLotes'
 import {
   interpretarLancamento, buscarProdutos, chaveApelido, normalizar,
@@ -26,7 +26,7 @@ type ItemEstoque = {
   produto_id: string
   qtd_atual: number
   qtd_cozinha: number
-  produtos: { nome: string; unidade: string } | null
+  produtos: { nome: string; unidade: string; controla_validade?: boolean } | null
 }
 
 type ItemLista = {
@@ -61,6 +61,8 @@ type Analise = {
   /** Lotes do produto antes deste item (já descontadas as saídas anteriores da lista). */
   validadesAntes: Validade[]
   temLotes: boolean
+  /** produtos.controla_validade — false: sem campo de validade e sem lotes. */
+  controla: boolean
   aviso: string | null
 }
 
@@ -162,9 +164,10 @@ function analisar(
     else if (item.tipo === 'transferencia' ? !perm.transf : !perm.mov) pendencias.push('permissao')
     if (!produto) pendencias.push('produto')
     if (!Number.isInteger(item.quantidade) || item.quantidade < 1) pendencias.push('quantidade')
-    if (!produto) return { produto, pendencias, lotes: [], validadesAntes: [], temLotes: false, aviso: null }
+    if (!produto) return { produto, pendencias, lotes: [], validadesAntes: [], temLotes: false, controla: true, aviso: null }
 
-    const reais = validadesPorProduto[produto.produto_id] ?? []
+    const controla = controlaValidade(produto.produtos)
+    const reais = controla ? validadesPorProduto[produto.produto_id] ?? [] : []
     const temLotes = reais.length > 0
     const vals = lotesDe(produto.produto_id)
     const validadesAntes = vals.filter((v) => v.quantidade > 0).map((v) => ({ ...v }))
@@ -176,7 +179,9 @@ function analisar(
     if (item.tipo === 'saida') {
       const disp = item.local === 'cozinha' ? q.cozinha : q.atual - q.cozinha
       if (item.quantidade > disp) aviso = `${nomeLocal(item.local)} só tem ${Math.max(0, disp)} ${un}`
-      if (item.lotes_remover) {
+      if (!controla) {
+        // sem lotes
+      } else if (item.lotes_remover) {
         for (const r of item.lotes_remover) {
           const v = vals.find((x) => x.id === r.validade_id)
           if (v) { lotes.push({ data: v.data_validade, quantidade: r.quantidade }); v.quantidade -= r.quantidade }
@@ -192,7 +197,8 @@ function analisar(
       q.atual -= item.quantidade
       if (item.local === 'cozinha') q.cozinha -= item.quantidade
     } else if (item.tipo === 'entrada') {
-      if (item.lotes_add?.length) lotes = item.lotes_add.map((l) => ({ data: l.data_validade, quantidade: l.quantidade }))
+      if (!controla) lotes = []
+      else if (item.lotes_add?.length) lotes = item.lotes_add.map((l) => ({ data: l.data_validade, quantidade: l.quantidade }))
       else if (item.data_validade) lotes = [{ data: item.data_validade, quantidade: item.quantidade }]
       else if (temLotes) pendencias.push('validade')
       if (lotes.some((l) => diasAteVencer(l.data) < 0)) aviso = 'Validade já vencida'
@@ -202,7 +208,7 @@ function analisar(
       if (item.quantidade > disp) aviso = `${nomeLocal(item.destino === 'cozinha' ? 'principal' : 'cozinha')} só tem ${Math.max(0, disp)} ${un}`
       q.cozinha += item.destino === 'cozinha' ? item.quantidade : -item.quantidade
     }
-    return { produto, pendencias, lotes, validadesAntes, temLotes, aviso }
+    return { produto, pendencias, lotes, validadesAntes, temLotes, controla, aviso }
   })
 }
 
@@ -326,7 +332,9 @@ export default function LancamentoRapido() {
   async function lancarTudo() {
     if (!lista.length || !completos || lancando) return
     setLancando(true); setAviso(null)
-    const itens = lista.map((i) => ({
+    const itens = lista.map((i) => {
+      const controla = controlaValidade(estoquePorId.get(i.produto_id ?? '')?.produtos)
+      return {
       key: i.key,
       tipo: i.tipo,
       produto_id: i.produto_id,
@@ -334,11 +342,12 @@ export default function LancamentoRapido() {
       local: i.local,
       destino: i.destino,
       lotes_add: i.tipo === 'entrada'
-        ? (i.lotes_add?.length ? i.lotes_add : i.data_validade ? [{ data_validade: i.data_validade, quantidade: i.quantidade }] : [])
+        ? (!controla ? [] : i.lotes_add?.length ? i.lotes_add : i.data_validade ? [{ data_validade: i.data_validade, quantidade: i.quantidade }] : [])
         : undefined,
       // null = o servidor escolhe por FEFO com os lotes de agora.
-      lotes_remover: i.tipo === 'saida' && i.lotes_remover ? i.lotes_remover : undefined,
-    }))
+      lotes_remover: i.tipo === 'saida' && i.lotes_remover && controla ? i.lotes_remover : undefined,
+      }
+    })
     try {
       const res = await fetch('/api/lancamento-rapido/lancar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itens }),
@@ -508,7 +517,7 @@ export default function LancamentoRapido() {
       </div>
 
       {/* ── Caixa de texto ── */}
-      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, background: D.card, borderTop: `1px solid ${D.border}`, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))' }}>
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'var(--bottom-nav-h, 0px)', zIndex: 40, background: D.card, borderTop: `1px solid ${D.border}`, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))' }}>
         <form onSubmit={(e) => { e.preventDefault(); enviarTexto() }}
           style={{ maxWidth: 560, margin: '0 auto', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
           <button type="button" aria-label="Como escrever" onClick={() => setAjudaAberta(true)}
@@ -834,7 +843,7 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
         </div>
       )}
 
-      {item.tipo === 'entrada' && produto && (
+      {item.tipo === 'entrada' && produto && analise.controla && (
         <div>
           <label style={rotulo}>Validade{analise.temLotes ? '' : ' (opcional)'}</label>
           {item.lotes_add && item.lotes_add.length > 1 ? (

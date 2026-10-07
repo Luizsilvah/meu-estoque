@@ -1,10 +1,15 @@
 'use client'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
+import Pagina from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import SearchBar from '@/app/components/ui/SearchBar'
+import Chips from '@/app/components/ui/Chips'
+import Card, { CARD_THUMB } from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
 import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 import ModalLotes, { type LoteAdd, type LoteRemover } from '@/app/components/ModalLotes'
 
@@ -15,10 +20,10 @@ type Produto = {
   qtd_base: number
   qtd_max: number
   qtd_cozinha: number
-  produtos: { nome: string; unidade: string; foto_url: string | null; fornecedores: { nome: string } | null } | null
+  produtos: { nome: string; unidade: string; foto_url: string | null; controla_validade?: boolean; fornecedores: { nome: string } | null } | null
 }
 
-import { Validade, formatarDataCurta, badgeValidade } from '@/app/lib/validades'
+import { Validade, formatarDataCurta, badgeValidade, controlaValidade } from '@/app/lib/validades'
 
 type Modal = { produto: Produto; tipo: 'entrada' | 'saida'; local: 'principal' | 'cozinha'; validade?: Validade } | null
 // Segundo passo: validades das unidades (entrada) ou lotes de onde sai (saída)
@@ -38,6 +43,7 @@ function Movimentacao() {
   const [validadesPorProduto, setValidadesPorProduto] = useState<Record<string, Validade[]>>({})
   const [busca, setBusca] = useState('')
   const [fornecedorAtivo, setFornecedorAtivo] = useState<string | null>(null)
+  const [soPedir, setSoPedir] = useState(false)
   const [modal, setModal] = useState<Modal>(null)
   const [modalLotes, setModalLotes] = useState<ModalLotesMov>(null)
   const [salvandoLotes, setSalvandoLotes] = useState(false)
@@ -96,8 +102,9 @@ function Movimentacao() {
     itens
       .filter((item) => item.produtos?.nome.toLowerCase().includes(busca.toLowerCase()))
       .filter((item) => !fornecedorAtivo || item.produtos?.fornecedores?.nome === fornecedorAtivo)
+      .filter((item) => !soPedir || item.qtd_atual <= item.qtd_base)
       .sort((a, b) => (a.produtos?.nome ?? '').localeCompare(b.produtos?.nome ?? '', 'pt-BR')),
-    [itens, busca, fornecedorAtivo])
+    [itens, busca, fornecedorAtivo, soPedir])
 
   function abrirModal(produto: Produto, tipo: 'entrada' | 'saida', local: 'principal' | 'cozinha' = 'principal', validade?: Validade) {
     setModal({ produto, tipo, local, validade }); setQuantidade('1'); setFeedback(null)
@@ -178,8 +185,32 @@ function Movimentacao() {
     // A quantidade aqui é só o total — o próximo passo pede as validades
     // (entrada) ou distribui entre os lotes (saída), e aí grava tudo junto.
     const { produto, tipo, local } = modal
+    const qtd = Math.floor(Number(quantidade))
+
+    // Produto que não controla validade: grava direto, sem o passo de lotes.
+    if (!controlaValidade(produto.produtos)) {
+      setSalvando(true); setFeedback(null)
+      try {
+        const res = await fetch('/api/movimentacao', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ produto_id: produto.produto_id, tipo, quantidade: qtd, local, lotes_add: [], lotes_remover: [] }),
+        })
+        const json = await res.json()
+        if (!res.ok || json.erro) { setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+        invalidarEstoqueCache()
+        setItens((prev) => prev.map((item) =>
+          item.id === produto.id ? { ...item, qtd_atual: json.qtd_atual, qtd_cozinha: json.qtd_cozinha ?? item.qtd_cozinha } : item
+        ))
+        setFeedback({ msg: tipo === 'entrada' ? 'Entrada registrada!' : `Saída de ${qtd} ${produto.produtos?.unidade ?? ''} registrada!`, ok: true })
+        setTimeout(() => { fecharModal(); setFeedback(null) }, 900)
+      } catch (err) {
+        setFeedback({ msg: err instanceof Error ? err.message : 'Erro', ok: false })
+      } finally { setSalvando(false) }
+      return
+    }
+
     setFeedbackLotes(null)
-    setModalLotes({ produto, tipo, quantidade: Math.floor(Number(quantidade)), local })
+    setModalLotes({ produto, tipo, quantidade: qtd, local })
     fecharModal()
   }
 
@@ -195,7 +226,7 @@ function Movimentacao() {
         const temp: Produto = {
           id: json.id ?? '', produto_id: json.produto_id, qtd_atual: json.qtd_atual, qtd_base: json.qtd_base, qtd_max: json.qtd_max,
           qtd_cozinha: json.qtd_cozinha ?? 0,
-          produtos: { nome: json.nome, unidade: json.unidade, foto_url: null, fornecedores: json.fornecedor_nome ? { nome: json.fornecedor_nome } : null },
+          produtos: { nome: json.nome, unidade: json.unidade, foto_url: null, controla_validade: json.controla_validade, fornecedores: json.fornecedor_nome ? { nome: json.fornecedor_nome } : null },
         }
         setModalTipoScan(temp)
       }
@@ -268,100 +299,74 @@ function Movimentacao() {
     // Principal = total − cozinha (a RPC recusa saída do principal acima disso)
     ? (modal.local === 'cozinha' ? (modal.produto.qtd_cozinha ?? 0) : modal.produto.qtd_atual - (modal.produto.qtd_cozinha ?? 0))
     : Infinity
+  const qtdPrecisaPedir = itens.filter((i) => i.qtd_atual <= i.qtd_base).length
   const qtdSaidaExcedida = modal?.tipo === 'saida' && !!quantidade && Number(quantidade) > qtdMaxSaida
 
   return (
-    <div style={{ minHeight: '100vh', background: D.bg }}>
+    <Pagina>
 
-      {/* Header */}
-      <div style={{ background: 'var(--page-header)', borderBottom: `1px solid ${D.border}`, padding: '48px 20px 20px' }}>
-        <Link href="/" style={{ color: D.text2, fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 12 }}>← Voltar</Link>
-        <h1 style={{ color: D.text, fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Movimentação</h1>
-        <p style={{ color: D.muted, fontSize: 13, marginTop: 4 }}>{itens.length} produtos</p>
-      </div>
+      <PageHeader titulo="Movimentar" subtitulo="Entrada e saída" />
 
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Busca + scanner */}
-        <div style={{ position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: D.muted }}>🔍</span>
-          <input type="text" placeholder="Buscar produto ou bipe o código..."
-            value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={handleBuscaKeyDown}
-            style={{ width: '100%', background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: '12px 48px 12px 36px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box' }}
-          />
-          <button onClick={abrirScanner} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>📷</button>
-        </div>
+        <SearchBar value={busca} onChange={setBusca} onKeyDown={handleBuscaKeyDown} onScanClick={abrirScanner} />
 
-        {/* Filtro por fornecedor */}
-        {fornecedores.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-            <button onClick={() => setFornecedorAtivo(null)}
-              style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: `1px solid ${!fornecedorAtivo ? '#6366F1' : D.border}`, cursor: 'pointer',
-                background: !fornecedorAtivo ? 'rgba(99,102,241,0.2)' : D.card, color: !fornecedorAtivo ? 'var(--accent-text)' : D.text2 }}>
-              Todos
-            </button>
-            {fornecedores.map((f) => (
-              <button key={f} onClick={() => setFornecedorAtivo(f === fornecedorAtivo ? null : f)}
-                style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: `1px solid ${fornecedorAtivo === f ? '#6366F1' : D.border}`, cursor: 'pointer',
-                  background: fornecedorAtivo === f ? 'rgba(99,102,241,0.2)' : D.card, color: fornecedorAtivo === f ? 'var(--accent-text)' : D.text2 }}>
-                {f}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Pedir + fornecedores */}
+        <Chips itens={[
+          { chave: 'todos', label: 'Todos', ativo: !fornecedorAtivo && !soPedir, onClick: () => { setFornecedorAtivo(null); setSoPedir(false) } },
+          { chave: 'pedir', label: `Pedir ${qtdPrecisaPedir}`, ativo: soPedir, onClick: () => setSoPedir((v) => !v) },
+          ...fornecedores.map((f) => ({
+            chave: `forn:${f}`, label: f, ativo: fornecedorAtivo === f, onClick: () => setFornecedorAtivo(f === fornecedorAtivo ? null : f),
+          })),
+        ]} />
 
         {/* Lista */}
         {itensFiltrados.length === 0 ? (
           <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', paddingTop: 40 }}>Nenhum produto encontrado.</p>
         ) : (
           itensFiltrados.map((item) => {
-            const precisaPedir = item.qtd_atual < item.qtd_base
             const validades = validadesPorProduto[item.produto_id] ?? []
             const badge = badgeValidade(validades)
             const valSorted = [...validades].sort((a, b) => a.data_validade.localeCompare(b.data_validade))
             const valTexto = valSorted.map((v) => `${formatarDataCurta(v.data_validade)} (${v.quantidade}un)`).join(' · ')
+            const qtdCozinha = item.qtd_cozinha ?? 0
 
             return (
-              <div key={item.produto_id} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <FotoThumb src={item.produtos?.foto_url ?? null} style={{ marginRight: 12 }} />
-                <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-                  <p style={{ color: D.text, fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <Card key={item.produto_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px 14px 16px' }}>
+                <FotoThumb src={item.produtos?.foto_url ?? null} size={CARD_THUMB} radius={14} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: D.text, fontWeight: 800, fontSize: 16, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.produtos?.nome ?? '—'}
                   </p>
-                  <p style={{ color: D.text2, fontSize: 12, marginTop: 2 }}>
-                    {item.produtos?.fornecedores?.nome ?? 'Fornecedor desconhecido'} · {item.produtos?.unidade}
+                  <p style={{ color: D.text2, fontSize: 13, margin: '3px 0 0', lineHeight: 1.4 }}>
+                    {item.qtd_atual} {item.produtos?.unidade} · Principal {item.qtd_atual - qtdCozinha} · Cozinha {qtdCozinha}
                   </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: precisaPedir ? '#EF4444' : '#10B981' }}>
-                      {item.qtd_atual} em estoque
-                    </p>
-                    {(item.qtd_cozinha ?? 0) > 0 && (
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(99,102,241,0.1)', color: 'var(--accent-text)' }}>
-                        🏪 {item.qtd_atual - item.qtd_cozinha} · 🍳 {item.qtd_cozinha}
-                      </span>
-                    )}
-                    {badge && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: badge.bg, color: badge.cor }}>
-                        {badge.texto}
-                      </span>
-                    )}
-                  </div>
-                  {valTexto && (
-                    <p style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>Val: {valTexto}</p>
+                  {(badge || valTexto) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, minWidth: 0 }}>
+                      {badge && (
+                        <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: badge.bg, color: badge.cor }}>
+                          {badge.texto}
+                        </span>
+                      )}
+                      {valTexto && (
+                        <span style={{ fontSize: 12, color: D.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>Val: {valTexto}</span>
+                      )}
+                    </div>
                   )}
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                  <button onClick={() => abrirModal(item, 'entrada')}
-                    style={{ width: 36, height: 36, borderRadius: '50%', background: '#10B981', border: 'none', color: '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    +
+                  <button onClick={() => abrirSaida(item)} aria-label={`Saída de ${item.produtos?.nome ?? 'produto'}`}
+                    style={{ ...botaoQuadrado, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
+                    <Icon nome="minus" size={22} traco={2.6} />
                   </button>
-                  <button onClick={() => abrirSaida(item)}
-                    style={{ width: 36, height: 36, borderRadius: '50%', background: '#EF4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ display: 'block', width: 14, height: 2, background: '#fff', borderRadius: 2 }} />
+                  <button onClick={() => abrirModal(item, 'entrada')} aria-label={`Entrada de ${item.produtos?.nome ?? 'produto'}`}
+                    style={{ ...botaoQuadrado, background: 'rgba(16,185,129,0.15)', color: '#10B981' }}>
+                    <Icon nome="plus" size={22} traco={2.6} />
                   </button>
                 </div>
-              </div>
+              </Card>
             )
           })
         )}
@@ -434,22 +439,22 @@ function Movimentacao() {
             <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{modalLocalSaida.produto.produtos?.nome}</p>
             <p style={{ color: D.text2, fontSize: 12, marginBottom: 16 }}>De qual local?</p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+            <div role="radiogroup" aria-label="Local da saída" style={{ display: 'flex', background: D.input, borderRadius: 16, padding: 4, gap: 4, marginBottom: 20 }}>
               {([
-                { local: 'principal' as const, label: '🏪 Principal', qtd: modalLocalSaida.produto.qtd_atual - (modalLocalSaida.produto.qtd_cozinha ?? 0) },
-                { local: 'cozinha' as const, label: '🍳 Cozinha', qtd: modalLocalSaida.produto.qtd_cozinha ?? 0 },
-              ]).map(({ local, label, qtd }) => (
-                <button key={local} onClick={() => setLocalSelecionado(local)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 14, padding: '12px 14px', border: `2px solid ${localSelecionado === local ? '#6366F1' : D.border}`, background: localSelecionado === local ? 'rgba(99,102,241,0.12)' : D.input, cursor: 'pointer', outline: 'none' }}>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{label}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <p style={{ fontSize: 14, fontWeight: 700, color: D.text }}>{qtd} {modalLocalSaida.produto.produtos?.unidade}</p>
-                    <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${localSelecionado === local ? '#6366F1' : D.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {localSelecionado === local && <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#6366F1' }} />}
-                    </div>
-                  </div>
-                </button>
-              ))}
+                { local: 'principal' as const, label: 'Principal', qtd: modalLocalSaida.produto.qtd_atual - (modalLocalSaida.produto.qtd_cozinha ?? 0) },
+                { local: 'cozinha' as const, label: 'Cozinha', qtd: modalLocalSaida.produto.qtd_cozinha ?? 0 },
+              ]).map(({ local, label, qtd }) => {
+                const ativo = localSelecionado === local
+                return (
+                  <button key={local} role="radio" aria-checked={ativo} onClick={() => setLocalSelecionado(local)}
+                    style={{ flex: 1, padding: '10px 8px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                      background: ativo ? '#6366F1' : 'transparent', color: ativo ? '#fff' : D.text2,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                    <span style={{ fontSize: 15, fontWeight: 800 }}>{label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.85 }}>{qtd} {modalLocalSaida.produto.produtos?.unidade}</span>
+                  </button>
+                )
+              })}
             </div>
 
             <button onClick={confirmarLocal}
@@ -499,7 +504,7 @@ function Movimentacao() {
 
             <p style={{ color: D.text2, fontSize: 12, marginLeft: 44, marginBottom: modal.validade ? 4 : 20 }}>
               {modal.tipo === 'saida' && modal.local === 'cozinha'
-                ? <>🍳 Cozinha: <span style={{ fontWeight: 700, color: D.text }}>{modal.produto.qtd_cozinha}</span> {modal.produto.produtos?.unidade}</>
+                ? <>Cozinha: <span style={{ fontWeight: 700, color: D.text }}>{modal.produto.qtd_cozinha}</span> {modal.produto.produtos?.unidade}</>
                 : <>Estoque atual: <span style={{ fontWeight: 700, color: D.text }}>{modal.produto.qtd_atual}</span> · {modal.produto.produtos?.unidade}</>
               }
             </p>
@@ -552,6 +557,11 @@ function Movimentacao() {
         </div>
       )}
 
-    </div>
+    </Pagina>
   )
+}
+
+const botaoQuadrado: React.CSSProperties = {
+  width: 48, height: 48, borderRadius: 14, border: 'none', cursor: 'pointer', flexShrink: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
 }

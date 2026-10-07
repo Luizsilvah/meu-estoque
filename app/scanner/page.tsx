@@ -5,7 +5,7 @@ import { D } from '@/app/lib/theme'
 import BarcodeCameraButton from '@/app/components/BarcodeCameraButton'
 import { invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 import ModalLotes, { type LoteAdd, type LoteRemover } from '@/app/components/ModalLotes'
-import type { Validade } from '@/app/lib/validades'
+import { controlaValidade, type Validade } from '@/app/lib/validades'
 
 type Produto = {
   produto_id: string
@@ -17,6 +17,7 @@ type Produto = {
   nome: string
   unidade: string
   fornecedor_nome: string | null
+  controla_validade?: boolean
 }
 
 type Modal = { produto: Produto; tipo: 'entrada' | 'saida' } | null
@@ -76,6 +77,32 @@ export default function Scanner() {
   // a gravação (quantidade + histórico + lotes) acontece só lá, numa chamada.
   async function salvar() {
     if (!modal || !quantidade || Number(quantidade) <= 0) return
+
+    // Produto que não controla validade: grava direto, sem o passo de lotes.
+    if (!controlaValidade(modal.produto)) {
+      const { produto: prod, tipo } = modal
+      const qtd = Math.floor(Number(quantidade))
+      setSalvando(true); setFeedback(null)
+      try {
+        const res = await fetch('/api/movimentacao', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ produto_id: prod.produto_id, tipo, quantidade: qtd, lotes_add: [], lotes_remover: [] }),
+        })
+        const json = await res.json()
+        if (!res.ok || json.erro) { setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+        invalidarEstoqueCache()
+        setProduto((p) => p ? { ...p, qtd_atual: json.qtd_atual ?? p.qtd_atual, qtd_cozinha: json.qtd_cozinha ?? p.qtd_cozinha } : p)
+        setFeedback({ msg: tipo === 'entrada' ? 'Entrada registrada!' : 'Saída registrada!', ok: true })
+        setTimeout(() => { setModal(null); setQuantidade(''); setFeedback(null) }, 900)
+      } catch {
+        setFeedback({ msg: 'Erro de conexão', ok: false })
+      } finally {
+        setSalvando(false)
+      }
+      return
+    }
+
     setSalvando(true)
     try {
       const res = await fetch(`/api/validades?produto_id=${modal.produto.produto_id}`)

@@ -35,6 +35,10 @@ export async function POST(request: Request) {
   }
 
   const admin = createSupabaseAdmin()
+  const { data: produto } = await admin.from('produtos').select('controla_validade').eq('id', produto_id).maybeSingle()
+  if (produto?.controla_validade === false) {
+    return Response.json({ erro: 'Este produto não controla validade' }, { status: 400 })
+  }
   const { data, error } = await admin
     .from('validades')
     .insert({ produto_id, data_validade, quantidade: Number(quantidade) || 1 })

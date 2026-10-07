@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import RegisterSW from "./components/RegisterSW";
+import BottomNav from "./components/ui/BottomNav";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const geistSans = Geist({
@@ -65,6 +66,7 @@ export default function RootLayout({
         <ThemeProvider>
           <RegisterSW />
           {children}
+          <BottomNav />
         </ThemeProvider>
       </body>
     </html>

@@ -14,6 +14,8 @@ export async function POST(request: Request) {
   const qtd_max = Number(body?.qtd_max) || 0
   const codigo_barras = body?.codigo_barras ?? null
   const preco_custo   = body?.preco_custo != null ? Number(body.preco_custo) : null
+  // Padrão da coluna é true; só grava false quando vier explicitamente
+  const controla_validade = body?.controla_validade !== false
 
   if (!nome || !fornecedor_id || !unidade) {
     return Response.json({ erro: 'Nome, fornecedor e unidade são obrigatórios' }, { status: 400 })
@@ -24,7 +26,7 @@ export async function POST(request: Request) {
   // Insere produto
   const { data: produto, error: erroProduto } = await supabase
     .from('produtos')
-    .insert({ nome, fornecedor_id, unidade, codigo_barras, preco_custo })
+    .insert({ nome, fornecedor_id, unidade, codigo_barras, preco_custo, controla_validade })
     .select('id, nome')
     .single()
 
