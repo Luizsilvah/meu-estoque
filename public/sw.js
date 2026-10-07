@@ -1,4 +1,6 @@
-const CACHE_NAME = 'meu-estoque-v1'
+// Troque a versão a cada deploy que precise derrubar o cache: o arquivo muda,
+// o navegador instala o SW novo e o activate apaga os caches com outro nome.
+const CACHE_NAME = 'meu-estoque-v2'
 
 // Páginas e assets para pré-cachear na instalação
 const PRECACHE_URLS = [
@@ -12,18 +14,20 @@ const PRECACHE_URLS = [
   '/icon-512.png',
 ]
 
-// ── Instalação: pré-cacheia páginas principais ───────────────────────────────
+// ── Instalação: assume na hora e pré-cacheia páginas principais ─────────────
 self.addEventListener('install', (event) => {
+  // Não espera as abas antigas fecharem: o SW novo ativa assim que instala.
+  self.skipWaiting()
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
       cache.addAll(PRECACHE_URLS).catch(() => {
         // Ignora erros de precache (página pode exigir auth)
       })
-    ).then(() => self.skipWaiting())
+    )
   )
 })
 
-// ── Ativação: remove caches antigos ─────────────────────────────────────────
+// ── Ativação: remove caches antigos e assume as abas abertas ────────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>

@@ -34,11 +34,22 @@ function urlBase64ToUint8Array(base64String: string) {
 
 export default function RegisterSW() {
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .catch(() => {})
+    if (!('serviceWorker' in navigator)) return
+    // SW novo assumiu (skipWaiting + clients.claim em public/sw.js) → recarrega
+    // uma vez para a página usar os arquivos novos. Na primeira instalação não
+    // havia controller, então não recarrega; a flag evita recarregar em loop.
+    const tinhaController = !!navigator.serviceWorker.controller
+    let recarregou = false
+    const aoTrocar = () => {
+      if (!tinhaController || recarregou) return
+      recarregou = true
+      window.location.reload()
     }
+    navigator.serviceWorker.addEventListener('controllerchange', aoTrocar)
+    navigator.serviceWorker
+      .register('/sw.js')
+      .catch(() => {})
+    return () => navigator.serviceWorker.removeEventListener('controllerchange', aoTrocar)
   }, [])
   return null
 }
