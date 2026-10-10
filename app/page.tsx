@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FUNCOES, podeAcessar, type Funcao } from './lib/permissoes'
 import { D } from './lib/theme'
+import { useRecarregarAoVoltar } from './lib/useRecarregarAoVoltar'
 import Icone from './components/ui/Icon'
 import { abrirMenu } from './components/ui/BottomNav'
 import { COR, gradiente, tituloSecaoStyle as tituloSecao, visual } from './components/ui/visualFuncoes'
@@ -50,11 +51,14 @@ export default function Home() {
   const [permissoes, setPermissoes] = useState<Record<string, boolean>>({})
   const [minhasAcoes, setMinhasAcoes] = useState<MinhaAcao[]>([])
   const [busca, setBusca] = useState('')
-  useEffect(() => {
-    fetch('/api/dashboard')
+  // Contagens (inclusive a de Compras) recarregam quando o app volta a ficar visível
+  useRecarregarAoVoltar(() => {
+    fetch('/api/dashboard', { cache: 'no-store' })
       .then((r) => r.json())
       .then((json) => { if (!json.erro) setDados(json) })
-
+      .catch(() => {})
+  })
+  useEffect(() => {
     fetch('/api/auth/me')
       .then((r) => r.json())
       .then((json) => {
@@ -160,7 +164,7 @@ export default function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {mostraCompra && (
                 <CardAtencao
-                  href="/compras-quinta" icone="cart" cor={COR.vermelho} titulo="Compra de quinta" numero={totalCompra}
+                  href="/compras" icone="cart" cor={COR.vermelho} titulo="Compras" numero={totalCompra}
                   texto={`${dados?.criticos ?? 0} crítico${dados?.criticos === 1 ? '' : 's'} · ${dados?.comprarQuinta ?? 0} a comprar${dados?.valorCompraQuinta ? ` · ≈ ${BRL.format(dados.valorCompraQuinta)}` : ''}`}
                 />
               )}

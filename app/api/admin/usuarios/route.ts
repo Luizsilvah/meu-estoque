@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from '../../../lib/supabase-admin'
 import { createSupabaseServer } from '../../../lib/supabase-server'
+import { sincronizarAliases } from '../../../lib/permissoes'
 
 export async function POST(request: Request) {
   // 1. Identifica o usuário pela sessão (server client com cookies)
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
       id: novoUsuario.user.id,
       nome,
       perfil: novoPerfil,
-      permissoes,
+      permissoes: sincronizarAliases(permissoes),
     })
 
   if (erroPerfil) {
@@ -132,8 +133,8 @@ export async function PATCH(request: Request) {
 
   if (!id) return Response.json({ erro: 'id obrigatório' }, { status: 400 })
 
-  // 3. Monta payload — permissoes é passado diretamente, sem nenhum filtro
-  const payload: Record<string, unknown> = { permissoes }
+  // 3. Monta payload — permissoes vai como veio, só com as chaves alias sincronizadas
+  const payload: Record<string, unknown> = { permissoes: sincronizarAliases(permissoes) }
   if (typeof nome === 'string' && nome.trim()) payload.nome = nome.trim()
 
   const { data, error } = await adminClient

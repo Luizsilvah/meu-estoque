@@ -125,7 +125,7 @@ function EstoqueContent() {
     async function buscar() {
       try {
         const [jsonEstoque, resForn, resPrevisao] = await Promise.all([
-          buscarEstoque(), fetch('/api/cadastro/fornecedor'), fetch('/api/previsao-compras'),
+          buscarEstoque(), fetch('/api/cadastro/fornecedor'), fetch('/api/previsao-compras', { cache: 'no-store' }),
         ])
         const jsonForn = await resForn.json()
         setDados(jsonEstoque as unknown as ItemEstoque[])

@@ -210,7 +210,7 @@ export default function BottomNav() {
               />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-              {vis['compras-quinta'] && <ItemBarra icone="cart" label="Compras" href="/compras-quinta" ativo={pathname.startsWith('/compras-quinta')} />}
+              {vis['compras-quinta'] && <ItemBarra icone="cart" label="Compras" href="/compras" ativo={pathname.startsWith('/compras')} />}
               <ItemBarra icone={me.isAdmin ? 'menu' : 'user'} label={me.isAdmin ? 'Menu' : 'Perfil'} ativo={menuAberto} onClick={() => setMenuAberto(true)} />
             </div>
           </div>

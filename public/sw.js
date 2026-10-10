@@ -1,6 +1,6 @@
 // Troque a versão a cada deploy que precise derrubar o cache: o arquivo muda,
 // o navegador instala o SW novo e o activate apaga os caches com outro nome.
-const CACHE_NAME = 'meu-estoque-v2'
+const CACHE_NAME = 'meu-estoque-v3'
 
 // Páginas e assets para pré-cachear na instalação
 const PRECACHE_URLS = [
@@ -8,7 +8,7 @@ const PRECACHE_URLS = [
   '/estoque',
   '/movimentacao',
   '/historico',
-  '/checklist',
+  '/compras',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',

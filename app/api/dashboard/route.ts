@@ -2,6 +2,10 @@
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
 import { createSupabaseServer } from '../../lib/supabase-server'
 
+// Contagens mudam a cada movimentação: nunca cachear
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET() {
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
@@ -102,5 +106,5 @@ export async function GET() {
     return preco != null ? soma + item.qtd_atual * preco : soma
   }, 0)
 
-  return Response.json({ total, precisamPedir: precisamPedir.length, estoqueOk, vencendo7d, listaPedir, listaVencendo, valorEstoque, criticos, comprarQuinta, valorCompraQuinta, validadesDivergentes })
+  return Response.json({ total, precisamPedir: precisamPedir.length, estoqueOk, vencendo7d, listaPedir, listaVencendo, valorEstoque, criticos, comprarQuinta, valorCompraQuinta, validadesDivergentes }, { headers: { 'Cache-Control': 'no-store' } })
 }

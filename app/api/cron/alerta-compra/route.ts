@@ -72,7 +72,7 @@ export async function GET(request: Request) {
       title: 'Compra de quinta',
       body: `${total} produto${total > 1 ? 's' : ''} precisa${total > 1 ? 'm' : ''} entrar na compra de amanhã`,
       icon: '/icon-192.png',
-      url: '/compras-quinta',
+      url: '/compras',
     })
 
     // Promise.allSettled: subscription expirada (410/404) de um admin não pode

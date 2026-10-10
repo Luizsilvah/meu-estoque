@@ -25,6 +25,10 @@ export type Funcao = {
   /** Chave(s) antiga(s) usada(s) quando a chave desta função ainda não existe no
    *  jsonb. Com mais de uma, basta ter qualquer uma delas. */
   herdaDe?: string | string[]
+  /** Chaves de funções antigas que foram juntadas nesta: true em qualquer uma
+   *  (ou na própria) libera. Ao salvar, recebem o mesmo valor da principal
+   *  (sincronizarAliases), senão não daria para desligar a função. */
+  alias?: string[]
   /** Só admin — não aparece como interruptor para funcionário. */
   somenteAdmin?: boolean
   /** Tem permissão e trava de página, mas não aparece como botão no menu. */
@@ -44,7 +48,6 @@ export const FUNCOES: Funcao[] = [
     gradient: 'linear-gradient(145deg,#2563EB,#1E40AF)', shadow: '0 4px 20px rgba(37,99,235,0.25)' },
   { id: 'historico', href: '/historico', emoji: '📋', nome: 'Histórico', grupo: 'Relatórios', padrao: true,  descricao: 'Movimentações registradas' },
   { id: 'chat',   href: '/chat',           emoji: '💬', nome: 'Chat IA', grupo: 'Equipe e chat', padrao: true,  descricao: 'Conversar com a equipe e a IA' },
-  { id: 'checklist',      href: '/checklist',      emoji: '🛒', nome: 'Checklist',      grupo: 'Compras', padrao: true,  descricao: 'Checklist de compras' },
   { id: 'transferencia', href: '/transferencia', emoji: '↔️', nome: 'Transferência', grupo: 'Estoque', padrao: true,  descricao: 'Mover entre principal e cozinha' },
   // Herda de Movimentação OU Transferência enquanto a chave não existir. A rota
   // de lançamento confere item a item a permissão do tipo (entrada/saída/transf.).
@@ -58,7 +61,10 @@ export const FUNCOES: Funcao[] = [
   { id: 'graficos',  href: '/relatorio?aba=graficos', rota: '/relatorio', emoji: '📈', nome: 'Gráficos', grupo: 'Relatórios', padrao: false, descricao: 'Gráficos de consumo' },
   { id: 'conferencia',   href: '/conferencia',   emoji: '✅', nome: 'Conferência',   grupo: 'Estoque', padrao: false, descricao: 'Contar e ajustar o estoque' },
   { id: 'scanner',       href: '/scanner',       emoji: '🔍', nome: 'Scanner',       grupo: 'Estoque', padrao: true,  descricao: 'Buscar produto pelo código de barras' },
-  { id: 'compras-quinta', href: '/compras-quinta', emoji: '🗓️', nome: 'Compras quinta', grupo: 'Compras', padrao: true,  herdaDe: 'estoque', descricao: 'Lista de compras da quinta-feira' },
+  // Checklist + Compras da quinta viraram a tela Compras (/compras). id antigo
+  // mantido; quem tinha 'checklist' OU 'compras-quinta' continua vendo.
+  // /checklist e /compras-quinta redirecionam para /compras.
+  { id: 'compras-quinta', href: '/compras', emoji: '🛒', nome: 'Compras', grupo: 'Compras', padrao: true, alias: ['checklist'], herdaDe: 'estoque', descricao: 'O que comprar, por fornecedor' },
   // id antigo mantido para não perder as permissões já salvas; a página agora é
   // /validades (abas Vencendo, Divergentes e Sem validade). /validades-divergentes redireciona.
   { id: 'validades-divergentes', href: '/validades', emoji: '📅', nome: 'Validades', grupo: 'Validades', padrao: false, herdaDe: 'conferencia', descricao: 'Vencendo, divergentes e sem validade' },
@@ -75,8 +81,9 @@ export const FUNCOES_CONFIGURAVEIS = FUNCOES.filter((f) => !f.somenteAdmin)
 export function podeAcessar(funcao: Funcao, perfil: string | null | undefined, permissoes: Permissoes | null | undefined): boolean {
   if (perfil === 'admin') return true
   if (funcao.somenteAdmin) return false
-  const valor = permissoes?.[funcao.id]
-  if (typeof valor === 'boolean') return valor
+  const chaves = [funcao.id, ...(funcao.alias ?? [])]
+  if (chaves.some((id) => permissoes?.[id] === true)) return true
+  if (chaves.some((id) => typeof permissoes?.[id] === 'boolean')) return false
   const antigas = funcao.herdaDe == null ? [] : Array.isArray(funcao.herdaDe) ? funcao.herdaDe : [funcao.herdaDe]
   return antigas.some((id) => permissoes?.[id] === true)
 }
@@ -89,6 +96,22 @@ export function podeAcessar(funcao: Funcao, perfil: string | null | undefined, p
 export function permissoesEfetivas(permissoes: Permissoes | null | undefined): Permissoes {
   const resultado: Permissoes = { ...(permissoes ?? {}) }
   for (const f of FUNCOES_CONFIGURAVEIS) resultado[f.id] = podeAcessar(f, 'funcionario', permissoes)
+  return resultado
+}
+
+/**
+ * Antes de gravar: as chaves alias (ex.: checklist) recebem o valor da função
+ * principal (compras-quinta). Sem isso, desligar Compras de alguém com
+ * checklist: true gravado não teria efeito.
+ */
+export function sincronizarAliases(permissoes: Permissoes | null | undefined): Permissoes | null | undefined {
+  if (!permissoes || typeof permissoes !== 'object') return permissoes
+  const resultado: Permissoes = { ...permissoes }
+  for (const f of FUNCOES) {
+    const valor = resultado[f.id]
+    if (typeof valor !== 'boolean') continue
+    for (const a of f.alias ?? []) resultado[a] = valor
+  }
   return resultado
 }
 

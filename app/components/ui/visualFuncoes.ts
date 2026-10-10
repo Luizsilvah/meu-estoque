@@ -22,7 +22,6 @@ const VISUAL: Record<string, { icone: string; cor: string; nome?: string; curto?
   conferencia:             { icone: 'check',     cor: COR.verde },
   historico:               { icone: 'clock',     cor: COR.amarelo },
   chat:                    { icone: 'chat',      cor: COR.rosa, curto: 'Chat' },
-  checklist:               { icone: 'list',      cor: COR.ciano },
   transferencia:           { icone: 'leftRight', cor: COR.ciano, curto: 'Transferir' },
   'lancamento-rapido':     { icone: 'zap',       cor: COR.indigo, curto: 'Lanç. rápido' },
   nota:                    { icone: 'file',      cor: COR.roxo, curto: 'Nota fiscal' },
