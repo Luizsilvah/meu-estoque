@@ -1,8 +1,9 @@
 // Endpoint POST /api/lancamento-rapido/lancar — lança a lista do Lançamento
 // rápido (app/lancamento-rapido). Cada item é independente e roda na ordem,
 // um por um, pelas mesmas funções do banco das outras telas:
-//   entrada/saída  → movimentacao_registrar (quantidade + lotes numa transação)
-//   transferência  → estoque_transferir
+//   entrada/saída  → movimentacao_registrar (quantidade + lotes numa transação;
+//                    "local" = cozinha vira p_delta_cozinha)
+//   transferência  → estoque_transferir (a mesma da tela Transferência)
 // Nada vem confiado do cliente: a permissão é conferida por item (entrada/saída
 // → 'movimentacao'; transferência → 'transferencia') e produto, quantidade e
 // lotes são validados aqui antes de chamar a função.
@@ -153,8 +154,8 @@ export async function POST(request: Request) {
           p_produto_id: produtoId,
           p_tipo: tipo,
           p_quantidade: quantidade,
-          // Saída da cozinha também baixa qtd_cozinha; entrada vai sempre pro principal.
-          p_delta_cozinha: tipo === 'saida' && local === 'cozinha' ? -quantidade : 0,
+          // Entrada/saída na cozinha também muda qtd_cozinha (qtd_atual é o total dos dois lugares).
+          p_delta_cozinha: local === 'cozinha' ? (tipo === 'entrada' ? quantidade : -quantidade) : 0,
           p_lotes_add: lotesAdd,
           p_lotes_remover: lotesRemover,
           p_usuario_id: user.id,

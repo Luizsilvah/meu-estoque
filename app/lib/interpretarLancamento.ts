@@ -29,13 +29,15 @@ export type ItemInterpretado = {
   /** Texto do produto que sobrou depois de tirar tipo, número, data e ligações. */
   termo: string
   quantidade: number
-  /** Saída: de onde sai. Entrada: sempre principal (igual à Movimentação). */
+  /** Entrada: onde entra. Saída: de onde sai. Sem palavra de lugar = principal. */
   local: Local
-  /** Só na transferência. */
+  /** Só na transferência (e como sugestão no "devolvi" sem lugar, que fica sem tipo). */
   origem: Local | null
   destino: Local | null
   /** YYYY-MM-DD — usada na entrada. */
   data_validade: string | null
+  /** Tipo ficou em aberto de propósito (ex.: "devolvi" sem lugar) — a tela mostra a pergunta. */
+  duvida_tipo: string | null
 }
 
 // ── Normalização ──
@@ -65,9 +67,15 @@ function registrar(tipo: TipoLancamento, palavras: string[]) {
 registrar('saida', ['usei', 'usou', 'usamos', 'peguei', 'pegou', 'pegamos', 'gastei', 'gastou', 'gastamos', 'saiu', 'sairam',
   'saida', 'tirei', 'tirou', 'tiramos', 'baixa', 'perdi', 'perdeu', 'perdemos', 'joguei', 'jogou', 'jogamos', 'vendi', 'vendeu'])
 registrar('entrada', ['chegou', 'chegaram', 'chegada', 'recebi', 'recebeu', 'recebemos', 'comprei', 'comprou', 'compramos',
-  'entrou', 'entraram', 'entrada'])
+  'entrou', 'entraram', 'entrada', 'coloquei', 'colocou', 'colocamos', 'botei', 'botou', 'botamos'])
 registrar('transferencia', ['passei', 'passou', 'passamos', 'transferi', 'transferiu', 'transferimos', 'levei', 'levou',
   'levamos', 'mandei', 'mandou', 'mandamos', 'transferencia', 'transf'])
+// "voltei 2 leite" = transferência que, sem lugar, vai da cozinha pro principal.
+const VOLTAR = ['voltei', 'voltou', 'voltamos', 'voltaram']
+registrar('transferencia', VOLTAR)
+// "devolvi" só é transferência com lugar na frase ("devolvi 2 leite pro estoque");
+// sem lugar pode ser devolução ao fornecedor → fica sem tipo, perguntando.
+const DEVOLVER = new Set(['devolvi', 'devolveu', 'devolvemos', 'devolveram'])
 
 const NUMEROS_EXTENSO: Record<string, number> = {
   um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10,
@@ -78,7 +86,7 @@ const LIGACAO = new Set([
   'de', 'da', 'do', 'das', 'dos', 'd', 'pra', 'pro', 'pras', 'pros', 'para', 'p', 'o', 'a', 'os', 'as', 'ao', 'aos',
   'no', 'na', 'nos', 'nas', 'em', 'e', 'com', 'pela', 'pelo', 'mais', 'fora', 'hoje', 'ontem', 'agora', 'usar', 'uso',
   'un', 'und', 'unid', 'uni', 'unidade', 'unidades', 'x', 'validade', 'val', 'vence', 'venc', 'vencimento',
-  'cozinha', 'coz', 'principal', 'estoque', 'deposito', 'dar', 'demos', 'dei', 'deu', 'que', 'la', 'ali', 'tb', 'tambem',
+  'cozinha', 'coz', 'principal', 'estoque', 'deposito', 'freezer', 'camara', 'dar', 'demos', 'dei', 'deu', 'que', 'la', 'ali', 'tb', 'tambem',
   'um', 'uma',
 ])
 
@@ -86,8 +94,8 @@ const LIGACAO = new Set([
 const EMBALAGEM = new Set(['caixa', 'cx', 'pacote', 'pct', 'pc', 'lata', 'garrafa', 'fardo', 'pote', 'balde', 'kg', 'kilo',
   'quilo', 'litro', 'l', 'g', 'grama'])
 
-const LOCAL_COZINHA =new Set(['cozinha', 'coz'])
-const LOCAL_PRINCIPAL = new Set(['principal', 'estoque', 'deposito'])
+const LOCAL_COZINHA = new Set(['cozinha', 'coz'])
+const LOCAL_PRINCIPAL = new Set(['principal', 'estoque', 'deposito', 'freezer', 'camara'])
 const PREP_PARA = new Set(['pra', 'para', 'pro', 'p', 'a', 'ao', 'na', 'no'])
 const PREP_DE = new Set(['da', 'do', 'de'])
 
@@ -96,7 +104,7 @@ const PREP_DE = new Set(['da', 'do', 'de'])
 function comecaNovoItem(trecho: string): boolean {
   const primeiro = tokenizar(trecho)[0]
   if (!primeiro) return false
-  return primeiro in PALAVRAS_TIPO || /^\d/.test(primeiro) || primeiro in NUMEROS_EXTENSO
+  return primeiro in PALAVRAS_TIPO || DEVOLVER.has(primeiro) || /^\d/.test(primeiro) || primeiro in NUMEROS_EXTENSO
 }
 
 /** Quebra o texto em itens: linha, vírgula, ";" e " e " (só quando o que vem depois começa outro item). */
@@ -242,19 +250,24 @@ const MARGEM_EMPATE = 0.05
 
 // ── Interpretação ──
 
-function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date, apelidos: Record<string, string>): Omit<ItemInterpretado, 'tipo_herdado'> {
+/** Item antes da herança de tipo; temLugar = a frase cita cozinha/principal. */
+type ItemBruto = Omit<ItemInterpretado, 'tipo_herdado'> & { temLugar: boolean }
+
+function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date, apelidos: Record<string, string>): ItemBruto {
   const { data, resto } = extrairData(normalizar(texto), hoje)
   let tokens = tokenizar(resto)
 
   // Tipo: primeira palavra-chave que aparecer.
   let tipo: TipoLancamento | null = null
+  let verbo = ''
   for (const t of tokens) {
-    if (t in PALAVRAS_TIPO) { tipo = PALAVRAS_TIPO[t]; break }
+    if (t in PALAVRAS_TIPO || DEVOLVER.has(t)) { verbo = t; tipo = PALAVRAS_TIPO[t] ?? null; break }
   }
-  tokens = tokens.filter((t) => !(t in PALAVRAS_TIPO))
+  tokens = tokens.filter((t) => !(t in PALAVRAS_TIPO) && !DEVOLVER.has(t))
 
-  // Local / direção — olha a palavra antes de "cozinha"/"principal".
-  let paraCozinha = false, deCozinha = false, paraPrincipal = false, temCozinha = false
+  // Local / direção — olha a palavra antes do lugar ("na/pra cozinha", "da cozinha", "pro estoque").
+  let temCozinha = false, paraCozinha = false, deCozinha = false
+  let temPrincipal = false, paraPrincipal = false, dePrincipal = false
   tokens.forEach((t, i) => {
     const antes = tokens[i - 1] ?? ''
     if (LOCAL_COZINHA.has(t)) {
@@ -262,8 +275,19 @@ function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date,
       if (PREP_PARA.has(antes)) paraCozinha = true
       if (PREP_DE.has(antes)) deCozinha = true
     }
-    if (LOCAL_PRINCIPAL.has(t) && PREP_PARA.has(antes)) paraPrincipal = true
+    if (LOCAL_PRINCIPAL.has(t)) {
+      temPrincipal = true
+      if (PREP_PARA.has(antes)) paraPrincipal = true
+      if (PREP_DE.has(antes)) dePrincipal = true
+    }
   })
+  const temLugar = temCozinha || temPrincipal
+
+  let duvida_tipo: string | null = null
+  if (DEVOLVER.has(verbo)) {
+    if (temLugar) tipo = 'transferencia'
+    else duvida_tipo = `“${verbo}” sem lugar — voltou pro estoque (transferência) ou foi pro fornecedor (saída)?`
+  }
 
   // Quantidade: primeiro número (10, 10x, x10, 10un); senão um..dez por extenso; senão 1.
   let quantidade = 1
@@ -277,17 +301,20 @@ function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date,
   if (idxQtd >= 0) tokens = tokens.filter((_, i) => i !== idxQtd)
   if (!Number.isFinite(quantidade) || quantidade < 1) quantidade = 1
 
-  let local: Local = 'principal'
+  let local: Local = temCozinha ? 'cozinha' : 'principal'
   let origem: Local | null = null
   let destino: Local | null = null
-  if (tipo === 'transferencia') {
+  if (tipo === 'transferencia' || DEVOLVER.has(verbo)) {
     if (paraCozinha) destino = 'cozinha'
     else if (paraPrincipal || deCozinha) destino = 'principal'
-    else destino = 'cozinha' // "levei 2 leite" / "passei 2 leite cozinha": o comum é ir pra cozinha
+    else if (dePrincipal) destino = 'cozinha'
+    else if (temCozinha) destino = 'cozinha' // "passei 2 leite cozinha"
+    else if (temPrincipal) destino = 'principal' // "voltei 2 leite estoque"
+    // Sem lugar: "voltei/devolvi" volta pro principal; "passei/levei/mandei" vai pra cozinha (o comum).
+    else destino = VOLTAR.includes(verbo) || DEVOLVER.has(verbo) ? 'principal' : 'cozinha'
     origem = destino === 'cozinha' ? 'principal' : 'cozinha'
-    local = origem
-  } else if (tipo === 'saida' || tipo === null) {
-    local = temCozinha ? 'cozinha' : 'principal'
+    // "devolvi" sem lugar fica sem tipo: se virar saída (pro fornecedor), sai do principal.
+    if (tipo === 'transferencia') local = origem
   }
 
   const palavras = tokens.filter((t) => !LIGACAO.has(t))
@@ -295,7 +322,7 @@ function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date,
 
   const base = {
     texto_original: texto, tipo, termo, quantidade, local, origem, destino,
-    data_validade: data,
+    data_validade: data, duvida_tipo, temLugar,
   }
 
   // Escolha lembrada antes ("leite" → Leite líquido).
@@ -321,7 +348,9 @@ function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date,
 /**
  * Interpreta o texto inteiro. Item sem palavra-chave herda o tipo do item
  * anterior da mesma linha ("usei 10 leite, 5 casquinha" → as duas são saída);
- * o primeiro item de cada linha sem palavra fica com tipo null.
+ * se também não cita lugar, herda o lugar/direção ("usei 2 leite da cozinha,
+ * 3 bis" → os dois saem da cozinha). O primeiro item de cada linha sem palavra
+ * fica com tipo null, e o "devolvi" sem lugar também (e não passa tipo adiante).
  */
 export function interpretarLancamento(
   texto: string,
@@ -332,22 +361,29 @@ export function interpretarLancamento(
   const apelidos = opcoes.apelidos ?? {}
   const resultado: ItemInterpretado[] = []
   let linhaAnterior = -1
-  let tipoAnterior: TipoLancamento | null = null
+  let anterior: ItemInterpretado | null = null
   for (const { texto: trecho, linha } of separarItens(texto)) {
-    if (linha !== linhaAnterior) { tipoAnterior = null; linhaAnterior = linha }
-    const item = interpretarItem(trecho, catalogo, hoje, apelidos)
-    let tipo_herdado = false
-    if (item.tipo === null && tipoAnterior !== null) {
+    if (linha !== linhaAnterior) { anterior = null; linhaAnterior = linha }
+    const bruto = interpretarItem(trecho, catalogo, hoje, apelidos)
+    let item: ItemInterpretado
+    if (bruto.tipo === null && !bruto.duvida_tipo && anterior?.tipo) {
       // Refaz com o tipo herdado para acertar local/direção.
-      const comTipo = interpretarItem(`${palavraDoTipo(tipoAnterior)} ${trecho}`, catalogo, hoje, apelidos)
-      Object.assign(item, { ...comTipo, texto_original: trecho })
-      tipo_herdado = true
+      const comTipo = interpretarItem(`${palavraDoTipo(anterior.tipo)} ${trecho}`, catalogo, hoje, apelidos)
+      item = { ...semTemLugar(comTipo), texto_original: trecho, tipo_herdado: true }
+      if (!bruto.temLugar) Object.assign(item, { local: anterior.local, origem: anterior.origem, destino: anterior.destino })
+    } else {
+      item = { ...semTemLugar(bruto), tipo_herdado: false }
     }
-    if (item.tipo === 'entrada') item.local = 'principal'
-    tipoAnterior = item.tipo
-    resultado.push({ ...item, tipo_herdado })
+    anterior = item
+    resultado.push(item)
   }
   return resultado
+}
+
+function semTemLugar(b: ItemBruto): Omit<ItemInterpretado, 'tipo_herdado'> {
+  const resto: Partial<ItemBruto> = { ...b }
+  delete resto.temLugar
+  return resto as Omit<ItemInterpretado, 'tipo_herdado'>
 }
 
 function palavraDoTipo(tipo: TipoLancamento): string {

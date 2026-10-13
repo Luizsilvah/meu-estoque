@@ -41,7 +41,7 @@ type ItemLista = {
   produto_id: string | null
   candidatos: Candidato[]
   quantidade: number
-  /** Saída: de onde sai. */
+  /** Entrada: onde entra. Saída: de onde sai. */
   local: Local
   /** Transferência: para onde vai (a origem é o outro local). */
   destino: Local
@@ -51,6 +51,8 @@ type ItemLista = {
   lotes_add: LoteAdd[] | null
   /** Saída com lotes escolhidos no ModalLotes; null = FEFO automático. */
   lotes_remover: LoteRemover[] | null
+  /** Pergunta do tipo quando o texto deixou em aberto ("devolvi" sem lugar). */
+  duvida_tipo: string | null
   erro?: string
 }
 
@@ -78,11 +80,12 @@ const AMARELO = '#F59E0B'
 const ACCENT = '#6366F1'
 
 const EXEMPLOS = [
-  { texto: 'usei 10 leite cozinha', explica: 'Saída de 10 da cozinha' },
-  { texto: 'peguei 3 casquinha', explica: 'Saída do principal' },
-  { texto: 'chegou 10 casquinha 15/01', explica: 'Entrada com validade (dd/mm ou dd/mm/aa)' },
-  { texto: 'passei 2 creme de ninho pra cozinha', explica: 'Transferência principal → cozinha' },
-  { texto: 'levei 1 leite da cozinha pro principal', explica: 'Transferência cozinha → principal' },
+  { texto: 'usei 2 leite da cozinha', explica: 'Saída da cozinha' },
+  { texto: 'peguei 3 casquinha', explica: 'Saída do principal (sem lugar = principal)' },
+  { texto: 'chegou 10 casquinha 15/01', explica: 'Entrada no principal com validade (dd/mm ou dd/mm/aa)' },
+  { texto: 'coloquei 5 açaí na cozinha', explica: 'Entrada na cozinha' },
+  { texto: 'passei 3 leite pra cozinha', explica: 'Transferência principal → cozinha' },
+  { texto: 'voltei 2 leite pro estoque', explica: 'Transferência cozinha → principal' },
   { texto: 'usei 5 leite, 2 granola e 3 bis', explica: 'Vários itens: vírgula, ";", " e " ou uma linha por item' },
 ]
 
@@ -106,7 +109,7 @@ function novaKey() {
 function itemVazio(): ItemLista {
   return {
     key: novaKey(), texto_original: '', termo: '', tipo: null, produto_id: null, candidatos: [], quantidade: 1,
-    local: 'principal', destino: 'cozinha', data_validade: null, lotes_add: null, lotes_remover: null,
+    local: 'principal', destino: 'cozinha', data_validade: null, lotes_add: null, lotes_remover: null, duvida_tipo: null,
   }
 }
 
@@ -206,6 +209,7 @@ function analisar(
       else if (temLotes) pendencias.push('validade')
       if (lotes.some((l) => diasAteVencer(l.data) < 0)) aviso = 'Validade já vencida'
       q.atual += item.quantidade
+      if (item.local === 'cozinha') q.cozinha += item.quantidade
     } else if (item.tipo === 'transferencia') {
       const disp = item.destino === 'cozinha' ? q.atual - q.cozinha : q.cozinha
       if (item.quantidade > disp) aviso = `${nomeLocal(item.destino === 'cozinha' ? 'principal' : 'cozinha')} só tem ${Math.max(0, disp)} ${un}`
@@ -320,6 +324,7 @@ export default function LancamentoRapido() {
       local: r.local,
       destino: r.destino ?? 'cozinha',
       data_validade: r.tipo === 'saida' || r.tipo === 'transferencia' ? null : r.data_validade,
+      duvida_tipo: r.duvida_tipo,
     }))
     if (!novos.length) return
     setLista((prev) => [...prev, ...novos])
@@ -474,7 +479,10 @@ export default function LancamentoRapido() {
           <CardItem key={item.key} item={item} analise={analises[idx]} perm={perm} catalogo={catalogo}
             onEditar={() => abrirEditor(item)}
             onRemover={() => remover(item.key)}
-            onTipo={(tipo) => atualizar(item.key, { tipo, lotes_add: null, lotes_remover: null, ...(tipo === 'entrada' ? { local: 'principal' as Local } : {}) })}
+            onTipo={(tipo) => atualizar(item.key, { tipo, lotes_add: null, lotes_remover: null, duvida_tipo: null })}
+            onTrocarLugar={() => atualizar(item.key, item.tipo === 'transferencia'
+              ? { destino: item.destino === 'cozinha' ? 'principal' : 'cozinha' }
+              : { local: item.local === 'cozinha' ? 'principal' : 'cozinha', lotes_remover: null })}
             onProduto={(pid) => escolherProduto(item, pid)}
             onValidade={(data) => atualizar(item.key, { data_validade: data || null, lotes_add: null })}
           />
@@ -536,9 +544,10 @@ export default function LancamentoRapido() {
           <p style={tituloFolha}>Como escrever</p>
           <p style={{ color: D.text2, fontSize: 13, margin: '0 0 12px', lineHeight: 1.45 }}>
             Toque num exemplo para usar. A palavra diz o tipo: <b style={{ color: TIPO_VIS.saida.cor }}>usei, peguei, gastei, tirei, perdi</b> = saída;{' '}
-            <b style={{ color: TIPO_VIS.entrada.cor }}>chegou, recebi, comprei</b> = entrada;{' '}
-            <b style={{ color: TIPO_VIS.transferencia.cor }}>passei, levei, mandei, transferi</b> = transferência.
-            Com “cozinha” sai da cozinha; sem, do principal.
+            <b style={{ color: TIPO_VIS.entrada.cor }}>chegou, recebi, comprei, coloquei</b> = entrada;{' '}
+            <b style={{ color: TIPO_VIS.transferencia.cor }}>passei, levei, mandei, voltei</b> = transferência.
+            Com “cozinha” (ou “coz”) entra/sai da cozinha; sem lugar, ou com estoque/depósito/freezer/câmara, é o principal.
+            Dá pra trocar o lugar tocando no chip do item.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {EXEMPLOS.map((e) => (
@@ -585,7 +594,7 @@ export default function LancamentoRapido() {
 
 // ── Card de um item da lista ──
 
-function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, onProduto, onValidade }: {
+function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, onTrocarLugar, onProduto, onValidade }: {
   item: ItemLista
   analise: Analise
   perm: { mov: boolean; transf: boolean }
@@ -593,11 +602,13 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
   onEditar: () => void
   onRemover: () => void
   onTipo: (t: TipoLancamento) => void
+  onTrocarLugar: () => void
   onProduto: (produtoId: string) => void
   onValidade: (data: string) => void
 }) {
   const pend = analise.pendencias
-  const amarelo = pend.length > 0
+  // Aviso (ex.: saída maior que o lugar tem) pinta de amarelo mas não bloqueia o "Lançar tudo".
+  const amarelo = pend.length > 0 || !!analise.aviso
   const vis = item.tipo ? TIPO_VIS[item.tipo] : null
   const nome = analise.produto?.produtos?.nome ?? null
   const un = analise.produto?.produtos?.unidade ?? ''
@@ -631,7 +642,7 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
       {/* Pendências */}
       {pend.includes('tipo') && (
         <div>
-          <p style={textoPend}>É entrada, saída ou transferência?</p>
+          <p style={textoPend}>{item.duvida_tipo ?? 'É entrada, saída ou transferência?'}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
             {(['saida', 'entrada', 'transferencia'] as TipoLancamento[]).map((t) => {
               const permitido = t === 'transferencia' ? perm.transf : perm.mov
@@ -675,7 +686,7 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
       {/* Linha 2: local + lotes, editar, remover */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, color: D.text2, fontSize: 12.5 }}>
-          <Detalhes item={item} analise={analise} />
+          <Detalhes item={item} analise={analise} onTrocarLugar={onTrocarLugar} />
         </div>
         <button type="button" onClick={onEditar} style={{ ...botaoLink, color: 'var(--accent-text)' }}>editar</button>
         <button type="button" aria-label="Remover item" onClick={onRemover} style={{ ...botaoLink, color: D.text2, display: 'flex', padding: 6 }}><Icon nome="close" size={16} /></button>
@@ -686,34 +697,48 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
           “{item.texto_original}”
         </p>
       )}
-      {analise.aviso && <p style={{ margin: 0, color: '#F97316', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {analise.aviso}</p>}
+      {analise.aviso && <p style={{ margin: 0, color: AMARELO, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {analise.aviso}</p>}
       {item.erro && <p style={{ margin: 0, color: '#EF4444', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {item.erro}</p>}
     </Card>
   )
 }
 
-function Detalhes({ item, analise }: { item: ItemLista; analise: Analise }) {
-  if (!item.tipo) return <span>{nomeLocal(item.local)}</span>
-  if (item.tipo === 'transferencia') {
-    const origem: Local = item.destino === 'cozinha' ? 'principal' : 'cozinha'
-    return <span>{nomeLocal(origem)} → {nomeLocal(item.destino)}</span>
-  }
-  const local = item.tipo === 'entrada' ? 'principal' : item.local
-  if (!analise.produto) return <span>{nomeLocal(local)}</span>
+function Detalhes({ item, analise, onTrocarLugar }: { item: ItemLista; analise: Analise; onTrocarLugar: () => void }) {
+  const lugar = <ChipLugar item={item} onTrocar={onTrocarLugar} />
+  if (!item.tipo || item.tipo === 'transferencia' || !analise.produto) return lugar
   if (item.tipo === 'saida') {
     return (
       <>
-        <span>{nomeLocal(local)} · {analise.lotes.length ? (analise.lotes.length === 1 ? 'lote' : 'lotes') : analise.temLotes ? 'sem lote disponível' : 'sem lote'}</span>
+        {lugar}
+        <span>{analise.lotes.length ? (analise.lotes.length === 1 ? 'lote' : 'lotes') : analise.temLotes ? 'sem lote disponível' : 'sem lote'}</span>
         {analise.lotes.map((l, i) => <Chip key={i}>{formatarData(l.data, false)} · {l.quantidade}</Chip>)}
       </>
     )
   }
   return (
     <>
-      <span>{nomeLocal(local)} · {analise.lotes.length > 1 ? 'lotes' : analise.lotes.length ? 'validade' : 'sem validade'}</span>
+      {lugar}
+      <span>{analise.lotes.length > 1 ? 'lotes' : analise.lotes.length ? 'validade' : 'sem validade'}</span>
       {analise.lotes.length === 1 && <Chip>{formatarData(analise.lotes[0].data)}</Chip>}
       {analise.lotes.length > 1 && analise.lotes.map((l, i) => <Chip key={i}>{formatarData(l.data, false)} · {l.quantidade}</Chip>)}
     </>
+  )
+}
+
+/** Onde entra/sai ("Cozinha") ou a direção ("Principal → Cozinha"); tocar troca. */
+function ChipLugar({ item, onTrocar }: { item: ItemLista; onTrocar: () => void }) {
+  const texto = item.tipo === 'transferencia'
+    ? `${nomeLocal(item.destino === 'cozinha' ? 'principal' : 'cozinha')} → ${nomeLocal(item.destino)}`
+    : nomeLocal(item.local)
+  const cozinha = item.tipo === 'transferencia' ? item.destino === 'cozinha' : item.local === 'cozinha'
+  return (
+    <button type="button" onClick={onTrocar} aria-label={`${texto} — tocar para trocar`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+        fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+        border: `1px solid ${cozinha ? 'rgba(249,115,22,0.45)' : D.border}`,
+        background: cozinha ? 'rgba(249,115,22,0.12)' : D.input, color: cozinha ? '#F97316' : D.text }}>
+      {texto} <Icon nome="leftRight" size={12} traco={2.4} />
+    </button>
   )
 }
 
@@ -785,7 +810,7 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
             const cor = TIPO_VIS[t].cor
             return (
               <button key={t} type="button" disabled={!permitido}
-                onClick={() => onMudar({ tipo: t, ...(t === 'entrada' ? { local: 'principal' as Local } : {}) })}
+                onClick={() => onMudar({ tipo: t, duvida_tipo: null })}
                 style={{ ...botaoEscolha, color: ativo ? '#fff' : cor, background: ativo ? cor : 'transparent', borderColor: ativo ? cor : `color-mix(in srgb, ${cor} 45%, transparent)`, opacity: permitido ? 1 : 0.35 }}>
                 {TIPO_VIS[t].nome}
               </button>
@@ -823,6 +848,12 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
         </div>
       </div>
 
+      {item.tipo === 'entrada' && (
+        <div>
+          <label style={rotulo}>Entra onde?</label>
+          <Segmento opcoes={[['principal', 'Principal'], ['cozinha', 'Cozinha']]} valor={item.local} onMudar={(v) => onMudar({ local: v as Local })} />
+        </div>
+      )}
       {item.tipo === 'saida' && (
         <div>
           <label style={rotulo}>Sai de onde?</label>
@@ -867,7 +898,7 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
         </div>
       )}
 
-      {analise.aviso && <p style={{ margin: 0, color: '#F97316', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {analise.aviso}</p>}
+      {analise.aviso && <p style={{ margin: 0, color: AMARELO, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {analise.aviso}</p>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, marginTop: 4 }}>
         <button type="button" onClick={onCancelar}
