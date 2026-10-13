@@ -9,11 +9,17 @@
 // A lista pendente fica salva no aparelho (localStorage por usuário) para não
 // se perder se o app fechar no meio do dia. As escolhas feitas em "QUAL?"
 // também ficam salvas ("leite" → Leite líquido) e valem nas próximas vezes.
+//
+// Aba "Histórico" (./Historico.tsx, ?aba=historico na URL): o resultado de
+// cada "Lançar tudo"; item com erro volta para cá com "Tentar de novo".
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Page from '@/app/components/ui/Page'
 import PageHeader from '@/app/components/ui/PageHeader'
 import Card from '@/app/components/ui/Card'
 import Icon from '@/app/components/ui/Icon'
+import Abas from '@/app/components/ui/Abas'
+import Historico from './Historico'
+import type { ItemLog } from '@/app/lib/lancamentoRapidoLog'
 
 import { D } from '@/app/lib/theme'
 import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
@@ -54,8 +60,12 @@ type ItemLista = {
   lotes_remover: LoteRemover[] | null
   /** Pergunta do tipo quando o texto deixou em aberto ("devolvi" sem lugar). */
   duvida_tipo: string | null
+  /** Frase inteira enviada na caixa de texto (vai para o histórico). */
+  texto_fonte?: string
   erro?: string
 }
+
+type AbaTela = 'lancar' | 'historico'
 
 type Pendencia = 'tipo' | 'permissao' | 'produto' | 'validade' | 'quantidade'
 
@@ -278,7 +288,8 @@ export default function LancamentoRapido() {
   const [rascunhoLido, setRascunhoLido] = useState(false)
 
   const [texto, setTexto] = useState('')
-  const [aviso, setAviso] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [aviso, setAviso] = useState<{ msg: string; ok: boolean; verHistorico?: boolean } | null>(null)
+  const [aba, setAba] = useState<AbaTela>('lancar')
   const [ajudaAberta, setAjudaAberta] = useState(false)
   const [editor, setEditor] = useState<{ item: ItemLista; novo: boolean } | null>(null)
   /** ModalLotes aberto: do rascunho do editor ou de um item da lista (key). */
@@ -299,7 +310,9 @@ export default function LancamentoRapido() {
   }
 
   useEffect(() => {
-    (async () => {
+    // Abre direto no histórico com ?aba=historico (recarregar mantém a aba).
+    if (new URLSearchParams(window.location.search).get('aba') === 'historico') setAba('historico')
+    ;(async () => {
       try {
         const [me] = await Promise.all([fetch('/api/auth/me').then((r) => r.json()), carregarEstoque()])
         const permissoes = (me?.permissoes ?? {}) as Permissoes
@@ -372,6 +385,7 @@ export default function LancamentoRapido() {
       destino: r.destino ?? 'cozinha',
       lotes_add: r.tipo === 'saida' || r.tipo === 'transferencia' ? [] : r.lotes,
       duvida_tipo: r.duvida_tipo,
+      texto_fonte: t,
     }))
     if (!novos.length) return
     setLista((prev) => [...prev, ...novos])
@@ -402,9 +416,11 @@ export default function LancamentoRapido() {
         lotes_remover: i.tipo === 'saida' && controla && i.lotes_remover && !analises[idx].lotesManuaisDescartados ? i.lotes_remover : undefined,
       }
     })
+    // O que foi digitado (cada frase uma vez, na ordem) — só para o histórico.
+    const texto = [...new Set(lista.map((i) => i.texto_fonte?.trim()).filter((t): t is string => !!t))].join('\n')
     try {
       const res = await fetch('/api/lancamento-rapido/lancar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itens }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itens, texto }),
       })
       const json = await res.json()
       if (!res.ok || !Array.isArray(json.resultados)) { setAviso({ msg: json.erro ?? 'Erro ao lançar', ok: false }); return }
@@ -418,8 +434,11 @@ export default function LancamentoRapido() {
         return r && !r.ok ? { ...i, erro: r.erro ?? 'Erro' } : i
       }))
       setAviso({
-        msg: (okCount ? `${okCount} ${okCount === 1 ? 'lançado' : 'lançados'}` : 'Nada lançado') + (erros ? ` · ${erros} com erro (ficaram na lista)` : ''),
+        msg: (okCount ? (erros ? `${okCount} ${okCount === 1 ? 'lançado' : 'lançados'}` : 'Lançado!') : 'Nada lançado')
+          + (erros ? ` · ${erros} com erro (ficaram na lista)` : ''),
         ok: erros === 0,
+        // O histórico é best-effort: sem registro gravado, não oferece o link.
+        verHistorico: json.log_gravado === true,
       })
       if (okCount) {
         invalidarEstoqueCache()
@@ -477,6 +496,33 @@ export default function LancamentoRapido() {
 
   const pendentes = analises.filter((a) => a.pendencias.length > 0).length
 
+  function trocarAba(nova: AbaTela) {
+    setAba(nova)
+    if (nova === 'historico') setAviso(null)
+    // Mantém a aba na URL sem navegar (mesmo esquema de /validades).
+    window.history.replaceState(null, '', nova === 'historico' ? '/lancamento-rapido?aba=historico' : '/lancamento-rapido')
+    window.scrollTo({ top: 0 })
+  }
+
+  /** "Tentar de novo" no histórico: só esse item volta para a lista (saída sempre pelo FEFO de agora). */
+  function tentarDeNovo(log: ItemLog) {
+    const ainda = log.produto_id && estoquePorId.has(log.produto_id)
+    const item: ItemLista = {
+      ...itemVazio(),
+      termo: log.nome ?? '',
+      tipo: log.tipo,
+      produto_id: ainda ? log.produto_id : null,
+      candidatos: !ainda && log.nome ? resultadosBusca(log.nome, catalogo) : [],
+      quantidade: log.quantidade ?? 1,
+      local: log.tipo === 'transferencia' ? 'principal' : log.local ?? 'principal',
+      destino: log.destino ?? 'cozinha',
+      lotes_add: log.tipo === 'entrada' ? log.lotes.map((l) => ({ ...l })) : [],
+    }
+    setLista((prev) => [...prev, item])
+    trocarAba('lancar')
+    setAviso({ msg: `${log.nome ?? 'Item'} voltou para a lista — confira e lance de novo.`, ok: true })
+  }
+
   if (carregando) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: D.bg }}>
       <p style={{ color: D.text2, fontSize: 14 }}>Carregando...</p>
@@ -487,6 +533,14 @@ export default function LancamentoRapido() {
     <Page>
       <PageHeader titulo="Lançamento rápido" subtitulo="Anota durante o dia, lança tudo de uma vez" />
 
+      <div style={{ marginBottom: 12 }}>
+        <Abas<AbaTela> ativa={aba} onMudar={trocarAba} abas={[
+          { id: 'lancar', label: 'Lançar', contador: lista.length ? `${lista.length} na lista` : undefined },
+          { id: 'historico', label: 'Histórico' },
+        ]} />
+      </div>
+
+      {aba === 'historico' ? <Historico onTentarDeNovo={tentarDeNovo} /> : (<>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {erroCarga && <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: 0 }}>{erroCarga}</p>}
         {!perm.mov && !perm.transf && !erroCarga && (
@@ -550,7 +604,16 @@ export default function LancamentoRapido() {
         {aviso && (
           <p style={{ margin: 0, padding: '10px 14px', borderRadius: 12, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'flex-start', gap: 6,
             background: aviso.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: aviso.ok ? '#10B981' : '#EF4444' }}>
-            <Icon nome={aviso.ok ? 'tick' : 'alert'} size={16} /> {aviso.msg}
+            <Icon nome={aviso.ok ? 'tick' : 'alert'} size={16} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {aviso.msg}
+              {aviso.verHistorico && (
+                <> <button type="button" onClick={() => trocarAba('historico')}
+                  style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', fontWeight: 800, textDecoration: 'underline', cursor: 'pointer' }}>
+                  Ver no histórico
+                </button></>
+              )}
+            </span>
           </p>
         )}
 
@@ -591,6 +654,7 @@ export default function LancamentoRapido() {
           </button>
         </form>
       </div>
+      </>)}
 
       {/* ── Ajuda: como escrever ── */}
       {ajudaAberta && (

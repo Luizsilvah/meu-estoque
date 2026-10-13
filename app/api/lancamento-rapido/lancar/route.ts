@@ -8,12 +8,17 @@
 // → 'movimentacao'; transferência → 'transferencia') e produto, quantidade e
 // lotes são validados aqui antes de chamar a função.
 //
+// Depois de processar, grava 1 registro em lancamento_rapido_log (aba
+// "Histórico") com o status real de cada item. É best-effort: se a gravação
+// falhar, o lançamento já feito fica como está e a resposta sai normal.
+//
 // Saída sem lotes escolhidos à mão ("lotes_remover" ausente) usa FEFO calculado
 // aqui com os lotes atuais do banco — assim dois itens do mesmo produto na mesma
 // lista não tentam tirar do mesmo lote já consumido.
 import { createSupabaseServer } from '@/app/lib/supabase-server'
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 import { FUNCOES, podeAcessar } from '@/app/lib/permissoes'
+import type { ItemLog } from '@/app/lib/lancamentoRapidoLog'
 
 type LoteAdd = { data_validade: string; quantidade: number }
 type LoteRemover = { validade_id: string; quantidade: number }
@@ -33,6 +38,7 @@ type Resultado = { key: string; ok: boolean; erro?: string }
 
 const MAX_ITENS = 100
 const MAX_QTD = 100000
+const MAX_TEXTO = 5000
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function inteiroPositivo(v: unknown): number | null {
@@ -74,7 +80,7 @@ export async function POST(request: Request) {
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
-  let body: { itens?: unknown }
+  let body: { itens?: unknown; texto?: unknown }
   try { body = await request.json() } catch {
     return Response.json({ erro: 'Body inválido' }, { status: 400 })
   }
@@ -94,15 +100,30 @@ export async function POST(request: Request) {
   const podeTransf = pode('transferencia')
 
   const resultados: Resultado[] = []
+  const logItens: ItemLog[] = []
   const atingiramMinimo: { produto_id: string; qtd: number; base: number }[] = []
 
   for (let i = 0; i < itens.length; i++) {
     const item = (itens[i] ?? {}) as ItemBody
     const key = typeof item.key === 'string' ? item.key : String(i)
-    const falhar = (erro: string) => resultados.push({ key, ok: false, erro })
+    const log: ItemLog = { produto_id: null, nome: null, tipo: null, local: null, quantidade: null, lotes: [], status: 'erro', erro: null }
+    logItens.push(log)
+    const falhar = (erro: string) => { resultados.push({ key, ok: false, erro }); log.erro = erro }
+    const acertar = () => { resultados.push({ key, ok: true }); log.status = 'ok' }
 
     const tipo = item.tipo
     if (tipo !== 'entrada' && tipo !== 'saida' && tipo !== 'transferencia') { falhar('Tipo inválido'); continue }
+    log.tipo = tipo
+    // Resto do log antes de validar: o histórico mostra o que foi tentado, mesmo com erro.
+    if (typeof item.produto_id === 'string' && UUID.test(item.produto_id)) log.produto_id = item.produto_id
+    log.quantidade = inteiroPositivo(item.quantidade)
+    if (tipo === 'transferencia') {
+      const d = item.destino === 'principal' || item.destino === 'cozinha' ? item.destino : null
+      log.destino = d
+      log.local = d ? (d === 'cozinha' ? 'principal' : 'cozinha') : null
+    } else {
+      log.local = item.local === 'cozinha' ? 'cozinha' : 'principal'
+    }
     if (tipo === 'transferencia' ? !podeTransf : !podeMov) {
       falhar(`Sem permissão para ${tipo === 'transferencia' ? 'transferência' : 'movimentação'}`); continue
     }
@@ -119,7 +140,7 @@ export async function POST(request: Request) {
           .rpc('estoque_transferir', { p_produto_id: produtoId, p_quantidade: quantidade, p_direction: destino })
           .single()
         if (error) { falhar(error.code === 'ESTK1' ? 'Produto não encontrado' : error.message); continue }
-        resultados.push({ key, ok: true })
+        acertar()
         continue
       }
 
@@ -130,6 +151,7 @@ export async function POST(request: Request) {
         const lidos = lerLotesAdd(item.lotes_add)
         if (typeof lidos === 'string') { falhar(lidos); continue }
         lotesAdd = lidos
+        log.lotes = lotesAdd.map((l) => ({ ...l }))
         // Validade obrigatória no Lançamento rápido (mais rígido que o banco, que só
         // exige quando o produto já tem lotes): os lotes têm que somar a quantidade.
         const { data: prod, error: erroProd } = await supabase.from('produtos').select('controla_validade').eq('id', produtoId).maybeSingle()
@@ -141,17 +163,26 @@ export async function POST(request: Request) {
         const lidos = lerLotesRemover(item.lotes_remover)
         if (typeof lidos === 'string') { falhar(lidos); continue }
         lotesRemover = lidos
+        // Datas só para o histórico (lido antes: o lote some quando zera).
+        if (lotesRemover.length) {
+          const { data: vals } = await supabase.from('validades').select('id, data_validade').in('id', lotesRemover.map((l) => l.validade_id))
+          const dataPorId = new Map((vals ?? []).map((v) => [v.id as string, v.data_validade as string]))
+          log.lotes = lotesRemover.flatMap((l) => dataPorId.has(l.validade_id) ? [{ data_validade: dataPorId.get(l.validade_id)!, quantidade: l.quantidade }] : [])
+        }
       } else {
         // FEFO com os lotes de agora (mesma regra do ModalLotes).
         const { data: lotes, error } = await supabase
-          .from('validades').select('id, quantidade').eq('produto_id', produtoId)
+          .from('validades').select('id, quantidade, data_validade').eq('produto_id', produtoId)
           .order('data_validade', { ascending: true }).order('id', { ascending: true })
         if (error) { falhar('Erro ao ler os lotes'); continue }
         let restante = quantidade
         for (const l of lotes ?? []) {
           if (restante <= 0) break
           const tira = Math.min(l.quantidade, restante)
-          if (tira > 0) lotesRemover.push({ validade_id: l.id, quantidade: tira })
+          if (tira > 0) {
+            lotesRemover.push({ validade_id: l.id, quantidade: tira })
+            log.lotes.push({ data_validade: l.data_validade, quantidade: tira })
+          }
           restante -= tira
         }
       }
@@ -173,7 +204,7 @@ export async function POST(request: Request) {
       if (tipo === 'saida' && data.qtd_atual <= (data.qtd_base ?? 0)) {
         atingiramMinimo.push({ produto_id: produtoId, qtd: data.qtd_atual, base: data.qtd_base ?? 0 })
       }
-      resultados.push({ key, ok: true })
+      acertar()
     } catch {
       falhar('Erro inesperado ao lançar')
     }
@@ -182,7 +213,31 @@ export async function POST(request: Request) {
   // Mesmo aviso de estoque baixo da Movimentação (best-effort, não segura a resposta).
   if (atingiramMinimo.length) void avisarEstoqueBaixo(supabase, atingiramMinimo)
 
-  return Response.json({ resultados })
+  const texto = typeof body.texto === 'string' ? body.texto.trim().slice(0, MAX_TEXTO) : ''
+  const logGravado = await gravarLog(supabase, { usuario_id: user.id, usuario_nome: usuarioNome, texto: texto || null, itens: logItens })
+
+  return Response.json({ resultados, log_gravado: logGravado })
+}
+
+/** Histórico (best-effort): nunca lança erro nem desfaz o que já foi lançado. */
+async function gravarLog(
+  supabase: ReturnType<typeof createSupabaseAdmin>,
+  registro: { usuario_id: string; usuario_nome: string | null; texto: string | null; itens: ItemLog[] },
+): Promise<boolean> {
+  try {
+    const ids = [...new Set(registro.itens.map((i) => i.produto_id).filter((id): id is string => !!id))]
+    if (ids.length) {
+      const { data: prods } = await supabase.from('produtos').select('id, nome').in('id', ids)
+      const nomes = new Map((prods ?? []).map((p) => [p.id as string, p.nome as string]))
+      for (const i of registro.itens) if (i.produto_id) i.nome = nomes.get(i.produto_id) ?? null
+    }
+    const { error } = await supabase.from('lancamento_rapido_log').insert(registro)
+    if (error) { console.error('lancamento_rapido_log:', error.message); return false }
+    return true
+  } catch (e) {
+    console.error('lancamento_rapido_log:', e)
+    return false
+  }
 }
 
 async function avisarEstoqueBaixo(supabase: ReturnType<typeof createSupabaseAdmin>, itens: { produto_id: string; qtd: number; base: number }[]) {
