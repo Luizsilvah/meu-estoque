@@ -130,6 +130,13 @@ export async function POST(request: Request) {
         const lidos = lerLotesAdd(item.lotes_add)
         if (typeof lidos === 'string') { falhar(lidos); continue }
         lotesAdd = lidos
+        // Validade obrigatória no Lançamento rápido (mais rígido que o banco, que só
+        // exige quando o produto já tem lotes): os lotes têm que somar a quantidade.
+        const { data: prod, error: erroProd } = await supabase.from('produtos').select('controla_validade').eq('id', produtoId).maybeSingle()
+        if (erroProd) { falhar('Erro ao ler o produto'); continue }
+        if ((prod?.controla_validade ?? true) && lotesAdd.reduce((s, l) => s + l.quantidade, 0) !== quantidade) {
+          falhar('Informe a validade de todas as unidades'); continue
+        }
       } else if (item.lotes_remover != null) {
         const lidos = lerLotesRemover(item.lotes_remover)
         if (typeof lidos === 'string') { falhar(lidos); continue }

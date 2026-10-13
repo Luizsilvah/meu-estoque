@@ -45,10 +45,11 @@ type ItemLista = {
   local: Local
   /** Transferência: para onde vai (a origem é o outro local). */
   destino: Local
-  /** Entrada com um lote só. */
-  data_validade: string | null
-  /** Entrada com lotes escolhidos no ModalLotes (substitui data_validade). */
-  lotes_add: LoteAdd[] | null
+  /**
+   * Entrada: validades (data + quantidade). Produto que controla validade só
+   * lança com a soma = quantidade. quantidade 0 = data ainda sem quantidade.
+   */
+  lotes_add: LoteAdd[]
   /** Saída com lotes escolhidos no ModalLotes; null = FEFO automático. */
   lotes_remover: LoteRemover[] | null
   /** Pergunta do tipo quando o texto deixou em aberto ("devolvi" sem lugar). */
@@ -63,6 +64,10 @@ type Analise = {
   pendencias: Pendencia[]
   /** Saída: de onde sai (FEFO ou escolhido). Entrada: o que entra. */
   lotes: { data: string; quantidade: number }[]
+  /** Entrada que controla validade: quantidade − soma dos lotes (>0 faltam, <0 passam). */
+  faltaValidade: number
+  /** Saída: lotes escolhidos à mão não batem mais → vai pelo FEFO automático. */
+  lotesManuaisDescartados: boolean
   /** Lotes do produto antes deste item (já descontadas as saídas anteriores da lista). */
   validadesAntes: Validade[]
   temLotes: boolean
@@ -83,6 +88,7 @@ const EXEMPLOS = [
   { texto: 'usei 2 leite da cozinha', explica: 'Saída da cozinha' },
   { texto: 'peguei 3 casquinha', explica: 'Saída do principal (sem lugar = principal)' },
   { texto: 'chegou 10 casquinha 15/01', explica: 'Entrada no principal com validade (dd/mm ou dd/mm/aa)' },
+  { texto: 'chegou 10 casquinha 5 15/01 5 20/02', explica: 'Entrada com 2 validades (número antes de cada data)' },
   { texto: 'coloquei 5 açaí na cozinha', explica: 'Entrada na cozinha' },
   { texto: 'passei 3 leite pra cozinha', explica: 'Transferência principal → cozinha' },
   { texto: 'voltei 2 leite pro estoque', explica: 'Transferência cozinha → principal' },
@@ -109,15 +115,36 @@ function novaKey() {
 function itemVazio(): ItemLista {
   return {
     key: novaKey(), texto_original: '', termo: '', tipo: null, produto_id: null, candidatos: [], quantidade: 1,
-    local: 'principal', destino: 'cozinha', data_validade: null, lotes_add: null, lotes_remover: null, duvida_tipo: null,
+    local: 'principal', destino: 'cozinha', lotes_add: [], lotes_remover: null, duvida_tipo: null,
   }
 }
 
 /** Confere o que veio do localStorage — formato antigo/quebrado vira lista vazia. */
 function listaValida(v: unknown): ItemLista[] {
   if (!Array.isArray(v)) return []
-  return v.filter((i): i is ItemLista => !!i && typeof i === 'object' && typeof (i as ItemLista).key === 'string')
-    .map((i) => ({ ...itemVazio(), ...i, candidatos: Array.isArray(i.candidatos) ? i.candidatos : [] }))
+  type Antigo = ItemLista & { data_validade?: string | null; lotes_add: LoteAdd[] | null }
+  return v.filter((i): i is Antigo => !!i && typeof i === 'object' && typeof (i as ItemLista).key === 'string')
+    .map(({ data_validade, ...i }) => {
+      // Formato antigo: data_validade (1 data = a quantidade toda) e lotes_add null.
+      let lotes = Array.isArray(i.lotes_add) ? i.lotes_add : []
+      if (!lotes.length && data_validade) lotes = [{ data_validade, quantidade: i.quantidade }]
+      return { ...itemVazio(), ...i, lotes_add: lotes, candidatos: Array.isArray(i.candidatos) ? i.candidatos : [] }
+    })
+}
+
+/** Mudou a quantidade: com 1 lote só ele acompanha (os 10 em 15/01 viram 12 em 15/01). */
+function lotesComQuantidade(lotes: LoteAdd[], antiga: number, nova: number): LoteAdd[] {
+  return lotes.length === 1 && (lotes[0].quantidade === antiga || lotes[0].quantidade === 0)
+    ? [{ ...lotes[0], quantidade: nova }]
+    : lotes
+}
+
+/** Texto da pendência de validade (card e editor). */
+function textoValidade(item: ItemLista, falta: number, un: string): string {
+  if (!item.lotes_add.length) return 'Informe a validade'
+  if (falta > 0) return `Faltam ${falta} ${un} sem validade`
+  if (falta < 0) return `Os lotes passam ${-falta} ${un} da quantidade`
+  return 'Tem validade sem quantidade'
 }
 
 function formatarData(iso: string, ano = true) {
@@ -170,7 +197,9 @@ function analisar(
     else if (item.tipo === 'transferencia' ? !perm.transf : !perm.mov) pendencias.push('permissao')
     if (!produto) pendencias.push('produto')
     if (!Number.isInteger(item.quantidade) || item.quantidade < 1) pendencias.push('quantidade')
-    if (!produto) return { produto, pendencias, lotes: [], validadesAntes: [], temLotes: false, controla: true, aviso: null }
+    if (!produto) {
+      return { produto, pendencias, lotes: [], faltaValidade: 0, lotesManuaisDescartados: false, validadesAntes: [], temLotes: false, controla: true, aviso: null }
+    }
 
     const controla = controlaValidade(produto.produtos)
     const reais = controla ? validadesPorProduto[produto.produto_id] ?? [] : []
@@ -179,43 +208,60 @@ function analisar(
     const validadesAntes = vals.filter((v) => v.quantidade > 0).map((v) => ({ ...v }))
     const q = qtdDe(produto)
     const un = produto.produtos?.unidade ?? 'un'
-    let lotes: { data: string; quantidade: number }[] = []
-    let aviso: string | null = null
+    const lotes: { data: string; quantidade: number }[] = []
+    const avisos: string[] = []
+    let faltaValidade = 0
+    let lotesManuaisDescartados = false
 
     if (item.tipo === 'saida') {
       const disp = item.local === 'cozinha' ? q.cozinha : q.atual - q.cozinha
-      if (item.quantidade > disp) aviso = `${nomeLocal(item.local)} só tem ${Math.max(0, disp)} ${un}`
-      if (!controla) {
-        // sem lotes
-      } else if (item.lotes_remover) {
-        for (const r of item.lotes_remover) {
-          const v = vals.find((x) => x.id === r.validade_id)
-          if (v) { lotes.push({ data: v.data_validade, quantidade: r.quantidade }); v.quantidade -= r.quantidade }
+      if (item.quantidade > disp) avisos.push(`${nomeLocal(item.local)} só tem ${Math.max(0, disp)} ${un}`)
+      if (controla) {
+        // Mesma regra do movimentacao_registrar: os lotes somam min(quantidade, total dos lotes).
+        const alvo = Math.min(item.quantidade, vals.reduce((s, v) => s + v.quantidade, 0))
+        const manuaisOk = !!item.lotes_remover
+          && item.lotes_remover.every((r) => r.quantidade > 0 && (vals.find((v) => v.id === r.validade_id)?.quantidade ?? 0) >= r.quantidade)
+          && item.lotes_remover.reduce((s, r) => s + r.quantidade, 0) === alvo
+        if (item.lotes_remover && !manuaisOk) {
+          lotesManuaisDescartados = true
+          avisos.push('Os lotes escolhidos não batem mais — voltou para o automático (vence primeiro sai primeiro)')
         }
-      } else {
-        let restante = item.quantidade
-        for (const v of vals) {
-          if (restante <= 0) break
-          const tira = Math.min(v.quantidade, restante)
-          if (tira > 0) { lotes.push({ data: v.data_validade, quantidade: tira }); v.quantidade -= tira; restante -= tira }
+        if (manuaisOk) {
+          for (const r of item.lotes_remover!) {
+            const v = vals.find((x) => x.id === r.validade_id)!
+            lotes.push({ data: v.data_validade, quantidade: r.quantidade }); v.quantidade -= r.quantidade
+          }
+        } else {
+          // FEFO: tira do que vence antes, espalhando por quantos lotes precisar.
+          let restante = item.quantidade
+          for (const v of vals) {
+            if (restante <= 0) break
+            const tira = Math.min(v.quantidade, restante)
+            if (tira > 0) { lotes.push({ data: v.data_validade, quantidade: tira }); v.quantidade -= tira; restante -= tira }
+          }
         }
       }
       q.atual -= item.quantidade
       if (item.local === 'cozinha') q.cozinha -= item.quantidade
     } else if (item.tipo === 'entrada') {
-      if (!controla) lotes = []
-      else if (item.lotes_add?.length) lotes = item.lotes_add.map((l) => ({ data: l.data_validade, quantidade: l.quantidade }))
-      else if (item.data_validade) lotes = [{ data: item.data_validade, quantidade: item.quantidade }]
-      else if (temLotes) pendencias.push('validade')
-      if (lotes.some((l) => diasAteVencer(l.data) < 0)) aviso = 'Validade já vencida'
+      if (controla) {
+        // Validade obrigatória: os lotes têm que somar a quantidade (nem menos, nem mais).
+        for (const l of item.lotes_add) if (l.quantidade > 0) lotes.push({ data: l.data_validade, quantidade: l.quantidade })
+        faltaValidade = item.quantidade - item.lotes_add.reduce((s, l) => s + l.quantidade, 0)
+        if (!item.lotes_add.length || faltaValidade !== 0 || item.lotes_add.some((l) => !l.data_validade || l.quantidade <= 0)) {
+          pendencias.push('validade')
+        }
+      }
+      if (lotes.some((l) => diasAteVencer(l.data) < 0)) avisos.push('Validade já vencida')
       q.atual += item.quantidade
       if (item.local === 'cozinha') q.cozinha += item.quantidade
     } else if (item.tipo === 'transferencia') {
       const disp = item.destino === 'cozinha' ? q.atual - q.cozinha : q.cozinha
-      if (item.quantidade > disp) aviso = `${nomeLocal(item.destino === 'cozinha' ? 'principal' : 'cozinha')} só tem ${Math.max(0, disp)} ${un}`
+      if (item.quantidade > disp) avisos.push(`${nomeLocal(item.destino === 'cozinha' ? 'principal' : 'cozinha')} só tem ${Math.max(0, disp)} ${un}`)
       q.cozinha += item.destino === 'cozinha' ? item.quantidade : -item.quantidade
     }
-    return { produto, pendencias, lotes, validadesAntes, temLotes, controla, aviso }
+    const aviso = avisos.length ? avisos.join(' · ') : null
+    return { produto, pendencias, lotes, faltaValidade, lotesManuaisDescartados, validadesAntes, temLotes, controla, aviso }
   })
 }
 
@@ -235,7 +281,8 @@ export default function LancamentoRapido() {
   const [aviso, setAviso] = useState<{ msg: string; ok: boolean } | null>(null)
   const [ajudaAberta, setAjudaAberta] = useState(false)
   const [editor, setEditor] = useState<{ item: ItemLista; novo: boolean } | null>(null)
-  const [modalLotesAberto, setModalLotesAberto] = useState(false)
+  /** ModalLotes aberto: do rascunho do editor ou de um item da lista (key). */
+  const [lotesDe, setLotesDe] = useState<{ editor: true } | { key: string } | null>(null)
   const [lancando, setLancando] = useState(false)
   const [confirmarLimpar, setConfirmarLimpar] = useState(false)
   const textoRef = useRef<HTMLTextAreaElement>(null)
@@ -303,7 +350,7 @@ export default function LancamentoRapido() {
 
   function escolherProduto(item: ItemLista, produtoId: string) {
     if (item.termo) lembrarEscolha(item.termo, produtoId)
-    atualizar(item.key, { produto_id: produtoId, candidatos: [], lotes_add: null, lotes_remover: null })
+    atualizar(item.key, { produto_id: produtoId, candidatos: [], lotes_remover: null })
   }
 
   function remover(key: string) {
@@ -323,7 +370,7 @@ export default function LancamentoRapido() {
       quantidade: r.quantidade,
       local: r.local,
       destino: r.destino ?? 'cozinha',
-      data_validade: r.tipo === 'saida' || r.tipo === 'transferencia' ? null : r.data_validade,
+      lotes_add: r.tipo === 'saida' || r.tipo === 'transferencia' ? [] : r.lotes,
       duvida_tipo: r.duvida_tipo,
     }))
     if (!novos.length) return
@@ -340,20 +387,19 @@ export default function LancamentoRapido() {
   async function lancarTudo() {
     if (!lista.length || !completos || lancando) return
     setLancando(true); setAviso(null)
-    const itens = lista.map((i) => {
+    const itens = lista.map((i, idx) => {
       const controla = controlaValidade(estoquePorId.get(i.produto_id ?? '')?.produtos)
       return {
-      key: i.key,
-      tipo: i.tipo,
-      produto_id: i.produto_id,
-      quantidade: i.quantidade,
-      local: i.local,
-      destino: i.destino,
-      lotes_add: i.tipo === 'entrada'
-        ? (!controla ? [] : i.lotes_add?.length ? i.lotes_add : i.data_validade ? [{ data_validade: i.data_validade, quantidade: i.quantidade }] : [])
-        : undefined,
-      // null = o servidor escolhe por FEFO com os lotes de agora.
-      lotes_remover: i.tipo === 'saida' && i.lotes_remover && controla ? i.lotes_remover : undefined,
+        key: i.key,
+        tipo: i.tipo,
+        produto_id: i.produto_id,
+        quantidade: i.quantidade,
+        local: i.local,
+        destino: i.destino,
+        // Formato do p_lotes_add (a soma já foi conferida — senão o item estaria pendente).
+        lotes_add: i.tipo === 'entrada' ? (controla ? i.lotes_add.filter((l) => l.quantidade > 0) : []) : undefined,
+        // undefined = o servidor escolhe por FEFO com os lotes de agora (também quando os escolhidos não batem mais).
+        lotes_remover: i.tipo === 'saida' && controla && i.lotes_remover && !analises[idx].lotesManuaisDescartados ? i.lotes_remover : undefined,
       }
     })
     try {
@@ -387,6 +433,10 @@ export default function LancamentoRapido() {
   }
 
   // ── Editor (editar item / + adicionar item) ──
+  function fecharEditor() {
+    setEditor(null)
+    setLotesDe(null)
+  }
   function abrirEditor(item?: ItemLista) {
     setEditor(item ? { item: { ...item }, novo: false } : { item: itemVazio(), novo: true })
   }
@@ -395,9 +445,12 @@ export default function LancamentoRapido() {
       if (!prev) return prev
       const atual = prev.item
       const novo = { ...atual, ...mudanca }
-      // Mudou o que define os lotes → os lotes escolhidos à mão não valem mais.
+      // Validades da entrada ficam; com 1 lote só ele acompanha a quantidade.
+      if (novo.quantidade !== atual.quantidade && !('lotes_add' in mudanca)) {
+        novo.lotes_add = lotesComQuantidade(atual.lotes_add, atual.quantidade, novo.quantidade)
+      }
+      // Mudou o que define a saída → os lotes escolhidos à mão não valem mais.
       if (novo.tipo !== atual.tipo || novo.produto_id !== atual.produto_id || novo.quantidade !== atual.quantidade || novo.local !== atual.local) {
-        if (!('lotes_add' in mudanca)) novo.lotes_add = null
         if (!('lotes_remover' in mudanca)) novo.lotes_remover = null
       }
       return { ...prev, item: novo }
@@ -406,12 +459,12 @@ export default function LancamentoRapido() {
   function salvarEditor() {
     if (!editor) return
     const it = { ...editor.item, candidatos: editor.item.produto_id ? [] : editor.item.candidatos, erro: undefined }
-    if (it.tipo !== 'entrada') { it.data_validade = null; it.lotes_add = null }
+    if (it.tipo !== 'entrada') it.lotes_add = []
     if (it.tipo !== 'saida') it.lotes_remover = null
     const original = lista.find((i) => i.key === it.key)
     if (original?.termo && it.produto_id && it.produto_id !== original.produto_id) lembrarEscolha(original.termo, it.produto_id)
     setLista((prev) => editor.novo ? [...prev, it] : prev.map((i) => i.key === it.key ? it : i))
-    setEditor(null)
+    fecharEditor()
   }
 
   // Análise do rascunho do editor na posição dele na lista (lotes já descontados).
@@ -479,12 +532,13 @@ export default function LancamentoRapido() {
           <CardItem key={item.key} item={item} analise={analises[idx]} perm={perm} catalogo={catalogo}
             onEditar={() => abrirEditor(item)}
             onRemover={() => remover(item.key)}
-            onTipo={(tipo) => atualizar(item.key, { tipo, lotes_add: null, lotes_remover: null, duvida_tipo: null })}
+            onTipo={(tipo) => atualizar(item.key, { tipo, lotes_remover: null, duvida_tipo: null })}
             onTrocarLugar={() => atualizar(item.key, item.tipo === 'transferencia'
               ? { destino: item.destino === 'cozinha' ? 'principal' : 'cozinha' }
               : { local: item.local === 'cozinha' ? 'principal' : 'cozinha', lotes_remover: null })}
             onProduto={(pid) => escolherProduto(item, pid)}
-            onValidade={(data) => atualizar(item.key, { data_validade: data || null, lotes_add: null })}
+            onValidade={(data) => atualizar(item.key, { lotes_add: data ? [{ data_validade: data, quantidade: item.quantidade }] : [] })}
+            onLotes={() => setLotesDe({ key: item.key })}
           />
         ))}
 
@@ -563,38 +617,51 @@ export default function LancamentoRapido() {
 
       {/* ── Editor do item ── */}
       {editor && analiseEditor && (
-        <Folha onFechar={() => setEditor(null)}>
+        <Folha onFechar={fecharEditor}>
           <EditorItem item={editor.item} novo={editor.novo} analise={analiseEditor} perm={perm} catalogo={catalogo}
-            onMudar={mudarRascunho} onSalvar={salvarEditor} onCancelar={() => setEditor(null)}
-            onEscolherLotes={() => setModalLotesAberto(true)} />
+            onMudar={mudarRascunho} onSalvar={salvarEditor} onCancelar={fecharEditor}
+            onEscolherLotes={() => setLotesDe({ editor: true })} />
         </Folha>
       )}
 
-      {editor && modalLotesAberto && analiseEditor?.produto && (editor.item.tipo === 'saida' || editor.item.tipo === 'entrada') && (
-        <ModalLotes
-          key={`${editor.item.key}-${editor.item.tipo}-${editor.item.quantidade}`}
-          produtoNome={analiseEditor.produto.produtos?.nome ?? 'Produto'}
-          unidade={analiseEditor.produto.produtos?.unidade ?? 'un'}
-          delta={editor.item.tipo === 'saida' ? -editor.item.quantidade : editor.item.quantidade}
-          validades={analiseEditor.validadesAntes}
-          textoConfirmar="Usar estes lotes"
-          salvando={false}
-          feedback={null}
-          onVoltar={() => setModalLotesAberto(false)}
-          onConfirmar={(lotesAdd, lotesRemover) => {
-            if (editor.item.tipo === 'saida') mudarRascunho({ lotes_remover: lotesRemover })
-            else mudarRascunho({ lotes_add: lotesAdd.length ? lotesAdd : null, data_validade: lotesAdd.length === 1 ? lotesAdd[0].data_validade : null })
-            setModalLotesAberto(false)
-          }}
-        />
-      )}
+      {/* ── Lotes (ModalLotes da Movimentação): do editor ou direto do card ── */}
+      {lotesDe && (() => {
+        const doEditor = 'editor' in lotesDe
+        const idx = doEditor ? -1 : lista.findIndex((i) => i.key === lotesDe.key)
+        const item = doEditor ? editor?.item : lista[idx]
+        const analise = doEditor ? analiseEditor : analises[idx]
+        if (!item || !analise?.produto || !analise.controla || (item.tipo !== 'saida' && item.tipo !== 'entrada')) return null
+        if (!Number.isInteger(item.quantidade) || item.quantidade < 1) return null
+        const aplicar = (m: Partial<ItemLista>) => doEditor ? mudarRascunho(m) : atualizar(item.key, m)
+        return (
+          <ModalLotes
+            key={`${item.key}-${item.tipo}-${item.quantidade}`}
+            produtoNome={analise.produto.produtos?.nome ?? 'Produto'}
+            unidade={analise.produto.produtos?.unidade ?? 'un'}
+            delta={item.tipo === 'saida' ? -item.quantidade : item.quantidade}
+            validades={analise.validadesAntes}
+            exigirData
+            lotesIniciaisAdd={item.tipo === 'entrada' ? item.lotes_add : undefined}
+            lotesIniciaisRemover={item.tipo === 'saida' && item.lotes_remover && !analise.lotesManuaisDescartados ? item.lotes_remover : undefined}
+            textoAdicionar="+ outra validade"
+            textoConfirmar={item.tipo === 'saida' ? 'Usar estes lotes' : 'Usar estas validades'}
+            salvando={false}
+            feedback={null}
+            onVoltar={() => setLotesDe(null)}
+            onConfirmar={(lotesAdd, lotesRemover) => {
+              aplicar(item.tipo === 'saida' ? { lotes_remover: lotesRemover } : { lotes_add: lotesAdd })
+              setLotesDe(null)
+            }}
+          />
+        )
+      })()}
     </Page>
   )
 }
 
 // ── Card de um item da lista ──
 
-function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, onTrocarLugar, onProduto, onValidade }: {
+function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, onTrocarLugar, onProduto, onValidade, onLotes }: {
   item: ItemLista
   analise: Analise
   perm: { mov: boolean; transf: boolean }
@@ -605,6 +672,8 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
   onTrocarLugar: () => void
   onProduto: (produtoId: string) => void
   onValidade: (data: string) => void
+  /** Abre o ModalLotes deste item (validades da entrada / lotes da saída). */
+  onLotes: () => void
 }) {
   const pend = analise.pendencias
   // Aviso (ex.: saída maior que o lugar tem) pinta de amarelo mas não bloqueia o "Lançar tudo".
@@ -677,8 +746,15 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
       )}
       {pend.includes('validade') && (
         <div>
-          <p style={textoPend}>Esse produto controla validade. Qual a data?</p>
-          <input type="date" value={item.data_validade ?? ''} onChange={(e) => onValidade(e.target.value)} style={{ ...campo, maxWidth: 220 }} />
+          <p style={{ ...textoPend, color: AMARELO }}>{textoValidade(item, analise.faltaValidade, un || 'un')}</p>
+          {item.lotes_add.length === 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+              <input type="date" value="" onChange={(e) => onValidade(e.target.value)} aria-label="Validade (a quantidade toda)" style={{ ...campo, width: 'auto', flex: '1 1 160px', maxWidth: 220 }} />
+              <button type="button" onClick={onLotes} style={{ ...botaoLink, color: 'var(--accent-text)' }}>+ outra validade</button>
+            </div>
+          ) : (
+            <button type="button" onClick={onLotes} style={{ ...botaoEscolha, color: 'var(--accent-text)' }}>Completar validades →</button>
+          )}
         </div>
       )}
       {pend.includes('quantidade') && <p style={{ ...textoPend, color: '#EF4444' }}>Quantidade inválida — toque em editar.</p>}
@@ -686,7 +762,7 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
       {/* Linha 2: local + lotes, editar, remover */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, color: D.text2, fontSize: 12.5 }}>
-          <Detalhes item={item} analise={analise} onTrocarLugar={onTrocarLugar} />
+          <Detalhes item={item} analise={analise} onTrocarLugar={onTrocarLugar} onLotes={onLotes} />
         </div>
         <button type="button" onClick={onEditar} style={{ ...botaoLink, color: 'var(--accent-text)' }}>editar</button>
         <button type="button" aria-label="Remover item" onClick={onRemover} style={{ ...botaoLink, color: D.text2, display: 'flex', padding: 6 }}><Icon nome="close" size={16} /></button>
@@ -703,24 +779,28 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
   )
 }
 
-function Detalhes({ item, analise, onTrocarLugar }: { item: ItemLista; analise: Analise; onTrocarLugar: () => void }) {
+function Detalhes({ item, analise, onTrocarLugar, onLotes }: { item: ItemLista; analise: Analise; onTrocarLugar: () => void; onLotes: () => void }) {
   const lugar = <ChipLugar item={item} onTrocar={onTrocarLugar} />
   if (!item.tipo || item.tipo === 'transferencia' || !analise.produto) return lugar
-  if (item.tipo === 'saida') {
-    return (
-      <>
-        {lugar}
-        <span>{analise.lotes.length ? (analise.lotes.length === 1 ? 'lote' : 'lotes') : analise.temLotes ? 'sem lote disponível' : 'sem lote'}</span>
-        {analise.lotes.map((l, i) => <Chip key={i}>{formatarData(l.data, false)} · {l.quantidade}</Chip>)}
-      </>
-    )
-  }
+  // Lotes/validades: tocar abre o ModalLotes (só produto que controla validade).
+  const tocavel = analise.controla && (item.tipo === 'entrada' || analise.temLotes)
+  const chips = item.tipo === 'entrada' && analise.lotes.length === 1
+    ? <Chip>{formatarData(analise.lotes[0].data)}</Chip>
+    : analise.lotes.map((l, i) => <Chip key={i}>{formatarData(l.data, false)} · {l.quantidade}</Chip>)
+  const rotulo = item.tipo === 'saida'
+    ? (analise.lotes.length ? (analise.lotes.length === 1 ? 'lote' : 'lotes') : analise.temLotes ? 'sem lote disponível' : 'sem lote')
+    : (analise.lotes.length > 1 ? 'validades' : analise.lotes.length ? 'validade' : 'sem validade')
   return (
     <>
       {lugar}
-      <span>{analise.lotes.length > 1 ? 'lotes' : analise.lotes.length ? 'validade' : 'sem validade'}</span>
-      {analise.lotes.length === 1 && <Chip>{formatarData(analise.lotes[0].data)}</Chip>}
-      {analise.lotes.length > 1 && analise.lotes.map((l, i) => <Chip key={i}>{formatarData(l.data, false)} · {l.quantidade}</Chip>)}
+      {tocavel ? (
+        <button type="button" onClick={onLotes} aria-label={item.tipo === 'saida' ? 'Escolher lotes' : 'Editar validades'}
+          style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: D.text2, fontSize: 12.5, fontFamily: 'inherit', textAlign: 'left' }}>
+          <span>{rotulo}</span>{chips}<Icon nome="edit" size={13} />
+        </button>
+      ) : (
+        <><span>{rotulo}</span>{chips}</>
+      )}
     </>
   )
 }
@@ -869,24 +949,30 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
 
       {item.tipo === 'entrada' && produto && analise.controla && (
         <div>
-          <label style={rotulo}>Validade{analise.temLotes ? '' : ' (opcional)'}</label>
-          {item.lotes_add && item.lotes_add.length > 1 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-              {item.lotes_add.map((l, i) => <Chip key={i}>{formatarData(l.data_validade, false)} · {l.quantidade}</Chip>)}
-              <button type="button" onClick={() => onMudar({ lotes_add: null, data_validade: null })} style={{ ...botaoLink, color: D.text2 }}>limpar</button>
-            </div>
+          <label style={rotulo}>Validade</label>
+          {item.lotes_add.length === 0 || (item.lotes_add.length === 1 && item.lotes_add[0].quantidade === item.quantidade) ? (
+            // Uma data só = a quantidade toda nessa data.
+            <input type="date" value={item.lotes_add[0]?.data_validade ?? ''}
+              onChange={(e) => onMudar({ lotes_add: e.target.value ? [{ data_validade: e.target.value, quantidade: item.quantidade }] : [] })}
+              style={{ ...campo, maxWidth: 220 }} />
           ) : (
-            <input type="date" value={item.data_validade ?? ''} onChange={(e) => onMudar({ data_validade: e.target.value || null, lotes_add: null })} style={{ ...campo, maxWidth: 220 }} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              {item.lotes_add.map((l, i) => <Chip key={i}>{formatarData(l.data_validade, false)} · {l.quantidade || '?'}</Chip>)}
+              <button type="button" onClick={() => onMudar({ lotes_add: [] })} style={{ ...botaoLink, color: D.text2 }}>limpar</button>
+            </div>
+          )}
+          {analise.pendencias.includes('validade') && (
+            <p style={{ margin: '6px 0 0 2px', color: AMARELO, fontSize: 12, fontWeight: 700 }}>{textoValidade(item, analise.faltaValidade, un)}</p>
           )}
           <button type="button" onClick={onEscolherLotes} disabled={!podeSalvar} style={{ ...botaoLink, color: 'var(--accent-text)', marginTop: 8, padding: 0 }}>
-            Vários lotes / somar num lote existente →
+            + outra validade / somar num lote existente →
           </button>
         </div>
       )}
 
       {item.tipo === 'saida' && produto && analise.temLotes && (
         <div>
-          <label style={rotulo}>Lotes {item.lotes_remover ? '(escolhidos)' : '(o que vence primeiro sai primeiro)'}</label>
+          <label style={rotulo}>Lotes {item.lotes_remover && !analise.lotesManuaisDescartados ? '(escolhidos)' : '(o que vence primeiro sai primeiro)'}</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             {analise.lotes.length ? analise.lotes.map((l, i) => <Chip key={i}>{formatarData(l.data, false)} · {l.quantidade}</Chip>)
               : <span style={{ color: D.text2, fontSize: 12 }}>sem lote disponível</span>}

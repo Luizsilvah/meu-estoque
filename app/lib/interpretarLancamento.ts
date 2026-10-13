@@ -12,6 +12,8 @@ export type Local = 'principal' | 'cozinha'
 
 export type ProdutoCatalogo = { produto_id: string; nome: string }
 export type Candidato = { produto_id: string; nome: string; score: number }
+/** Mesmo formato do p_lotes_add de movimentacao_registrar. */
+export type LoteTexto = { data_validade: string; quantidade: number }
 
 export type ItemInterpretado = {
   texto_original: string
@@ -34,8 +36,12 @@ export type ItemInterpretado = {
   /** Só na transferência (e como sugestão no "devolvi" sem lugar, que fica sem tipo). */
   origem: Local | null
   destino: Local | null
-  /** YYYY-MM-DD — usada na entrada. */
-  data_validade: string | null
+  /**
+   * Validades citadas no texto (usadas na entrada), na ordem. 1 data sem número
+   * antes = a quantidade toda; "5 15/01 5 20/02" = um lote por data.
+   * quantidade 0 = data sem quantidade (a tela pede para completar).
+   */
+  lotes: LoteTexto[]
   /** Tipo ficou em aberto de propósito (ex.: "devolvi" sem lugar) — a tela mostra a pergunta. */
   duvida_tipo: string | null
 }
@@ -107,22 +113,36 @@ function comecaNovoItem(trecho: string): boolean {
   return primeiro in PALAVRAS_TIPO || DEVOLVER.has(primeiro) || /^\d/.test(primeiro) || primeiro in NUMEROS_EXTENSO
 }
 
-/** Quebra o texto em itens: linha, vírgula, ";" e " e " (só quando o que vem depois começa outro item). */
+// Pedaço que é só um lote ("5 15/01", "15/01") — continua o item anterior.
+const SO_LOTE = /^\s*(\d+\s*(x|un|und)?\s+)?\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?\s*$/i
+
+/**
+ * Quebra o texto em itens: linha, vírgula, ";" e " e " (só quando o que vem
+ * depois começa outro item). "chegou 10 leite 5 15/01, 5 20/02" fica um item só.
+ */
 export function separarItens(texto: string): { texto: string; linha: number }[] {
   const itens: { texto: string; linha: number }[] = []
   texto.split(/\r?\n/).forEach((linha, idxLinha) => {
+    let ultimo: { texto: string; linha: number } | null = null
+    const empurrar = (t: string) => {
+      const limpo = t.trim()
+      if (!limpo) return
+      if (ultimo && SO_LOTE.test(limpo)) { ultimo.texto += ' ' + limpo; return }
+      ultimo = { texto: limpo, linha: idxLinha }
+      itens.push(ultimo)
+    }
     for (const parte of linha.split(/[;,]/)) {
       const pedacos = parte.split(/\s+e\s+/i)
       let atual = pedacos[0]
       for (let i = 1; i < pedacos.length; i++) {
-        if (comecaNovoItem(pedacos[i])) {
-          if (atual.trim()) itens.push({ texto: atual.trim(), linha: idxLinha })
+        if (comecaNovoItem(pedacos[i]) && !SO_LOTE.test(pedacos[i])) {
+          empurrar(atual)
           atual = pedacos[i]
         } else {
-          atual += ' e ' + pedacos[i]
+          atual += (SO_LOTE.test(pedacos[i]) ? ' ' : ' e ') + pedacos[i]
         }
       }
-      if (atual.trim()) itens.push({ texto: atual.trim(), linha: idxLinha })
+      empurrar(atual)
     }
   })
   return itens
@@ -136,24 +156,32 @@ function dataISO(ano: number, mes: number, dia: number): string | null {
   return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
 }
 
-/** dd/mm, dd/mm/aa, dd/mm/aaaa (também com "-"). Sem ano = a próxima data futura (hoje conta). */
-function extrairData(texto: string, hoje: Date): { data: string | null; resto: string } {
-  let data: string | null = null
+// Marca a posição de cada data no texto ("qqdata0", "qqdata1"...) para saber
+// qual número vem logo antes dela (= quantidade daquele lote).
+const MARCA_DATA = /^qqdata(\d+)$/
+
+/**
+ * dd/mm, dd/mm/aa, dd/mm/aaaa (também com "-"). Sem ano = a próxima data futura
+ * (hoje conta). Data inválida (31/02) some do texto sem virar lote.
+ */
+function extrairDatas(texto: string, hoje: Date): { datas: string[]; resto: string } {
+  const datas: string[] = []
   const re = /(^|[^\d])(\d{1,2})[/-](\d{1,2})(?:[/-](\d{4}|\d{2}))?(?!\d)/g
   const resto = texto.replace(re, (_m, antes: string, d: string, m: string, a?: string) => {
-    if (data == null) {
-      const dia = Number(d), mes = Number(m)
-      if (a) {
-        data = dataISO(a.length === 2 ? 2000 + Number(a) : Number(a), mes, dia)
-      } else {
-        const base = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())
-        const desteAno = dataISO(base.getFullYear(), mes, dia)
-        data = desteAno && new Date(desteAno + 'T00:00:00') >= base ? desteAno : dataISO(base.getFullYear() + 1, mes, dia)
-      }
+    const dia = Number(d), mes = Number(m)
+    let data: string | null
+    if (a) {
+      data = dataISO(a.length === 2 ? 2000 + Number(a) : Number(a), mes, dia)
+    } else {
+      const base = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())
+      const desteAno = dataISO(base.getFullYear(), mes, dia)
+      data = desteAno && new Date(desteAno + 'T00:00:00') >= base ? desteAno : dataISO(base.getFullYear() + 1, mes, dia)
     }
-    return antes + ' '
+    if (!data) return antes + ' '
+    datas.push(data)
+    return `${antes} qqdata${datas.length - 1} `
   })
-  return { data, resto }
+  return { datas, resto }
 }
 
 // ── Busca aproximada ──
@@ -254,8 +282,25 @@ const MARGEM_EMPATE = 0.05
 type ItemBruto = Omit<ItemInterpretado, 'tipo_herdado'> & { temLugar: boolean }
 
 function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date, apelidos: Record<string, string>): ItemBruto {
-  const { data, resto } = extrairData(normalizar(texto), hoje)
+  const { datas, resto } = extrairDatas(normalizar(texto), hoje)
   let tokens = tokenizar(resto)
+
+  // Lotes: o número logo antes de cada data é a quantidade daquele lote
+  // ("chegou 10 leite 5 15/01 5 20/02"). Com uma data só e nenhum outro número,
+  // esse número é o total ("chegou leite 10 15/01" = os 10 nessa data).
+  const ehQtd = (t: string | undefined) => !!t && /^\d+(x|un|und)?$/.test(t)
+  const qtdLote: (number | null)[] = datas.map(() => null)
+  const idxQtdLote = new Set<number>()
+  tokens.forEach((t, i) => {
+    const m = MARCA_DATA.exec(t)
+    if (m && ehQtd(tokens[i - 1]) && !idxQtdLote.has(i - 1)) {
+      qtdLote[Number(m[1])] = Number(tokens[i - 1].replace(/\D/g, ''))
+      idxQtdLote.add(i - 1)
+    }
+  })
+  const outrosNumeros = tokens.filter((t, i) => !idxQtdLote.has(i) && (/^(\d+)(x|un|und|unid|uni|pct|cx)?$/.test(t) || /^x\d+$/.test(t))).length
+  if (datas.length === 1 && outrosNumeros === 0) { idxQtdLote.clear(); qtdLote[0] = null }
+  tokens = tokens.filter((t, i) => !idxQtdLote.has(i) && !MARCA_DATA.test(t))
 
   // Tipo: primeira palavra-chave que aparecer.
   let tipo: TipoLancamento | null = null
@@ -301,6 +346,16 @@ function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date,
   if (idxQtd >= 0) tokens = tokens.filter((_, i) => i !== idxQtd)
   if (!Number.isFinite(quantidade) || quantidade < 1) quantidade = 1
 
+  // Sem total escrito: a quantidade é a soma dos lotes ("chegou leite 5 15/01 5 20/02" = 10).
+  const somaLotes = qtdLote.reduce<number>((s, q) => s + (q ?? 0), 0)
+  if (idxQtd < 0 && somaLotes > 0) quantidade = somaLotes
+  // Data sem número: se for a única assim, fica com o que falta; se forem várias, 0 (a tela pede).
+  const semQtd = qtdLote.filter((q) => q == null).length
+  const lotes: LoteTexto[] = datas.map((data_validade, i) => ({
+    data_validade,
+    quantidade: qtdLote[i] ?? (semQtd === 1 ? Math.max(0, quantidade - somaLotes) : 0),
+  }))
+
   let local: Local = temCozinha ? 'cozinha' : 'principal'
   let origem: Local | null = null
   let destino: Local | null = null
@@ -322,7 +377,7 @@ function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date,
 
   const base = {
     texto_original: texto, tipo, termo, quantidade, local, origem, destino,
-    data_validade: data, duvida_tipo, temLugar,
+    lotes, duvida_tipo, temLugar,
   }
 
   // Escolha lembrada antes ("leite" → Leite líquido).

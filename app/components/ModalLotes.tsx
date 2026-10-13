@@ -7,6 +7,8 @@
 //   delta < 0 → quanto sai de cada lote, já pré-preenchido em FEFO. Se os lotes
 //               somam menos que o delta, tira tudo dos lotes e o resto sai sem lote.
 // Só monta a lista; quem chama grava (movimentacao_registrar / conferencia_ajustar).
+// O Lançamento rápido também usa, com exigirData (data obrigatória mesmo sem
+// lotes) e lotesIniciais* (abre com o que o item já tem).
 // Use `key` no componente para recomeçar o estado a cada abertura.
 import { useState } from 'react'
 
@@ -37,6 +39,7 @@ const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWe
 export default function ModalLotes({
   produtoNome, unidade, delta, validades, titulo, textoConfirmar = 'Salvar', corConfirmar = '#6366F1',
   salvando, feedback, onVoltar, onConfirmar,
+  exigirData = false, lotesIniciaisAdd, lotesIniciaisRemover, textoAdicionar = '+ adicionar lote',
 }: {
   produtoNome: string
   unidade: string
@@ -49,16 +52,34 @@ export default function ModalLotes({
   feedback: { msg: string; ok: boolean } | null
   onVoltar: () => void
   onConfirmar: (lotesAdd: LoteAdd[], lotesRemover: LoteRemover[]) => void
+  /** Entrada: data obrigatória mesmo se o produto ainda não tem lotes (Lançamento rápido). */
+  exigirData?: boolean
+  /** Entrada: abre com estas linhas (quantidade 0 = em branco) e uma linha a mais com o que faltar. */
+  lotesIniciaisAdd?: LoteAdd[]
+  /** Saída: abre com estes lotes em vez do FEFO. */
+  lotesIniciaisRemover?: LoteRemover[]
+  textoAdicionar?: string
 }) {
   const aumenta = delta > 0
   const alvo = Math.abs(delta)
   const vals = [...validades].sort((a, b) => a.data_validade.localeCompare(b.data_validade))
   const semControle = vals.length === 0
+  const dataOpcional = semControle && !exigirData
 
   // Aumentou: 1 linha já trazendo o delta inteiro — o usuário só põe a data.
-  const [linhasEntrada, setLinhasEntrada] = useState<LinhaEntrada[]>(() => [{ key: Date.now(), data: '', qtd: String(alvo) }])
+  const [linhasEntrada, setLinhasEntrada] = useState<LinhaEntrada[]>(() => {
+    const agora = Date.now()
+    if (!lotesIniciaisAdd?.length) return [{ key: agora, data: '', qtd: String(alvo) }]
+    const linhas = lotesIniciaisAdd.map((l, i) => ({ key: agora + i, data: l.data_validade, qtd: l.quantidade > 0 ? String(l.quantidade) : '' }))
+    const falta = alvo - lotesIniciaisAdd.reduce((s, l) => s + l.quantidade, 0)
+    if (falta > 0 && linhas.every((l) => l.qtd)) linhas.push({ key: agora + linhas.length, data: '', qtd: String(falta) })
+    return linhas
+  })
   // Diminuiu: FEFO — tira primeiro do que vence antes até completar o delta.
   const [qtdSaidaPorLote, setQtdSaidaPorLote] = useState<Record<string, string>>(() => {
+    if (lotesIniciaisRemover?.length) {
+      return Object.fromEntries(lotesIniciaisRemover.map((l) => [l.validade_id, String(l.quantidade)]))
+    }
     let restante = alvo
     const mapa: Record<string, string> = {}
     for (const v of vals) {
@@ -81,8 +102,8 @@ export default function ModalLotes({
     const algumaData = linhasEntrada.some((l) => l.data)
     // Produto sem nenhum lote: validade opcional — sem data em nenhuma
     // linha, salva só a quantidade. Se preencheu alguma data, valida normal.
-    if (semControle) aviso = 'Produto sem controle de validade — a data é opcional.'
-    if (!(semControle && !algumaData)) {
+    if (dataOpcional) aviso = 'Produto sem controle de validade — a data é opcional.'
+    if (!(dataOpcional && !algumaData)) {
       if (linhasEntrada.some((l) => parseQtd(l.qtd) > 0 && !l.data)) motivoBloqueio = 'Informe a data de validade de todos os lotes.'
       else if (linhasEntrada.some((l) => l.data && parseQtd(l.qtd) === 0)) motivoBloqueio = 'Informe a quantidade de todos os lotes.'
       else if (soma < alvo) motivoBloqueio = `Faltam ${alvo - soma} ${unidade} nos lotes.`
@@ -172,7 +193,7 @@ export default function ModalLotes({
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 88px 44px', gap: 8, marginTop: 4 }}>
-              <label style={{ ...labelStyle, marginBottom: 0 }}>Validade{semControle ? ' (opcional)' : ''}</label>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>Validade{dataOpcional ? ' (opcional)' : ''}</label>
               <label style={{ ...labelStyle, marginBottom: 0 }}>Qtd</label>
               <span />
             </div>
@@ -200,7 +221,7 @@ export default function ModalLotes({
             })}
             <button type="button" onClick={adicionarLinha} disabled={salvando}
               style={{ padding: '12px 16px', borderRadius: 16, border: '1px dashed #6366F1', background: 'rgba(99,102,241,0.08)', color: '#6366F1', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-              + adicionar lote
+              {textoAdicionar}
             </button>
           </div>
         ) : (

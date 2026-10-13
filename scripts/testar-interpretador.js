@@ -2,7 +2,7 @@
 // (app/lib/interpretarLancamento.ts) contra o catálogo REAL de produtos e
 // imprime o que ele entendeu de cada frase.
 //
-// Sem argumento, roda os CASOS abaixo e confere tipo + lugar (✓/✗).
+// Sem argumento, roda os CASOS (tipo + lugar) e os CASOS_LOTES (validades) e marca ✓/✗.
 //
 // SÓ LEITURA: faz um select em estoque/produtos e mais nada — não grava nada.
 // O .ts é transpilado na hora com o typescript que já está nas devDependencies.
@@ -68,6 +68,30 @@ const CASOS = [
   ['usei 2 leite, devolvi 1 bis', ['SAIDA principal', 'TIPO? principal']],
 ]
 
+// Validades na entrada: "quantidade = dd/mm×qtd + ..." de cada item (×0 = data
+// sem quantidade, a tela pede para completar).
+const CASOS_LOTES = [
+  ['chegou 10 leite 15/01', ['10 = 15/01×10']],
+  ['chegou leite 10 15/01', ['10 = 15/01×10']],
+  ['chegou 10 leite', ['10 = sem data']],
+  ['chegou 10 leite 5 15/01 5 20/02', ['10 = 15/01×5 + 20/02×5']],
+  ['chegou leite 5 15/01 5 20/02', ['10 = 15/01×5 + 20/02×5']],
+  ['chegou 10 leite 5 15/01 e 5 20/02', ['10 = 15/01×5 + 20/02×5']],
+  ['chegou 10 leite 5 15/01, 5 20/02', ['10 = 15/01×5 + 20/02×5']],
+  ['chegou 10 leite 6 15/01 20/02', ['10 = 15/01×6 + 20/02×4']],
+  ['chegou 10 leite 4 15/01 5 20/02', ['10 = 15/01×4 + 20/02×5']],
+  ['chegou 10 leite 5 15/01', ['10 = 15/01×5']],
+  ['chegou 10 leite 15/01 20/02', ['10 = 15/01×0 + 20/02×0']],
+  ['chegou 12 casquinha 3 15/01/27 9 01/03/2027', ['12 = 15/01×3 + 01/03×9']],
+  ['chegou 10 leite 5 15/01 5 20/02, 3 bis 10/12', ['10 = 15/01×5 + 20/02×5', '3 = 10/12×3']],
+  ['chegou 10 leite 15/01, usei 2 bis', ['10 = 15/01×10', '2 = sem data']],
+]
+
+function resumoLotes(item) {
+  const dm = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7)
+  return `${item.quantidade} = ${item.lotes.map((l) => `${dm(l.data_validade)}×${l.quantidade}`).join(' + ') || 'sem data'}`
+}
+
 function resumo(item) {
   if (!item.tipo) return `TIPO? ${item.local}`
   if (item.tipo === 'transferencia') return `TRANSFERENCIA ${item.origem}→${item.destino}`
@@ -78,7 +102,7 @@ function descrever(item) {
   const tipo = item.tipo ? item.tipo.toUpperCase() + (item.tipo_herdado ? ' (herdado)' : '') : 'TIPO?'
   const onde = item.tipo === 'transferencia' ? `${item.origem} → ${item.destino}` : item.local
   const linhas = [`  • "${item.texto_original}"`, `      ${tipo} · qtd ${item.quantidade} · ${onde}` +
-    (item.data_validade ? ` · validade ${item.data_validade}` : '') + ` · termo "${item.termo}"`]
+    (item.lotes.length ? ` · validade ${item.lotes.map((l) => `${l.data_validade}×${l.quantidade}`).join(' + ')}` : '') + ` · termo "${item.termo}"`]
   if (item.duvida_tipo) linhas.push(`      ? ${item.duvida_tipo}`)
   if (item.produto_id) {
     linhas.push(`      ✓ ${item.produto_nome}  (confiança ${item.confianca.toFixed(2)})`)
@@ -97,11 +121,13 @@ async function main() {
   const catalogo = data.filter((d) => d.produtos?.nome).map((d) => ({ produto_id: d.produto_id, nome: d.produtos.nome }))
   console.log(`Catálogo: ${catalogo.length} produtos (só leitura)\n`)
 
-  const casos = process.argv.length > 2 ? process.argv.slice(2).map((f) => [f, null]) : CASOS
+  const casos = process.argv.length > 2
+    ? process.argv.slice(2).map((f) => [f, null, resumo])
+    : [...CASOS.map(([f, e]) => [f, e, resumo]), ...CASOS_LOTES.map(([f, e]) => [f, e, resumoLotes])]
   let falhas = 0
-  for (const [frase, esperado] of casos) {
+  for (const [frase, esperado, fn] of casos) {
     const itens = interpretarLancamento(frase, catalogo)
-    const obtido = itens.map(resumo)
+    const obtido = itens.map(fn)
     const ok = !esperado || JSON.stringify(obtido) === JSON.stringify(esperado)
     if (!ok) falhas++
     console.log(`${esperado ? (ok ? '✓' : '✗') : '>'} ${frase}`)
@@ -110,7 +136,7 @@ async function main() {
     console.log('')
   }
   if (process.argv.length <= 2) {
-    console.log(falhas ? `${falhas} de ${casos.length} frases com lugar/tipo errado` : `Todas as ${casos.length} frases com tipo e lugar certos`)
+    console.log(falhas ? `${falhas} de ${casos.length} frases erradas` : `Todas as ${casos.length} frases certas (${CASOS.length} de tipo/lugar + ${CASOS_LOTES.length} de validade)`)
     if (falhas) process.exitCode = 1
   }
 }
