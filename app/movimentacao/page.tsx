@@ -480,6 +480,7 @@ function Movimentacao() {
           feedback={feedbackLotes}
           onVoltar={voltarParaQuantidade}
           onConfirmar={registrarMovimentacao}
+          exigirData={modalLotes.tipo === 'entrada'}
         />
       )}
 

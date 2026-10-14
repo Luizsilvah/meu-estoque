@@ -51,6 +51,22 @@ export async function POST(request: Request) {
     .single()
   const usuario_nome = perfil?.nome ?? user.email?.split('@')[0] ?? null
 
+  // Validade obrigatória: entrada de produto que controla validade tem que
+  // trazer lotes somando a quantidade (mesma regra/mensagens do MOV03 em
+  // 20261014120000_validade_obrigatoria_entrada.sql — aqui vale mesmo antes
+  // da migration). Lido do banco, não do cliente.
+  if (tipo === 'entrada') {
+    const { data: prod, error: erroProd } = await supabase
+      .from('produtos').select('controla_validade').eq('id', produto_id).maybeSingle()
+    if (erroProd) return Response.json({ erro: 'Erro ao ler o produto' }, { status: 500 })
+    if (prod?.controla_validade ?? true) {
+      const qtd = Math.floor(Number(quantidade))
+      const somaLotes = (Array.isArray(lotes_add) ? lotes_add : []).reduce((s, l) => s + (Number(l?.quantidade) || 0), 0)
+      if (somaLotes === 0) return Response.json({ erro: `Informe a validade das ${qtd} unidades` }, { status: 400 })
+      if (somaLotes !== qtd) return Response.json({ erro: `Os lotes somam ${somaLotes} mas a entrada é de ${qtd}` }, { status: 400 })
+    }
+  }
+
   // Saída da cozinha também baixa qtd_cozinha; o resto só mexe em qtd_atual
   const deltaCozinha = tipo === 'saida' && local === 'cozinha' ? -quantidade : 0
   const { data: resultado, error } = await supabase

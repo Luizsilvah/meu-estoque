@@ -1109,6 +1109,7 @@ function EstoqueContent() {
           feedback={feedbackAjuste}
           onVoltar={() => { setAjusteQtd(null); setFeedbackAjuste(null) }}
           onConfirmar={(lotesAdd, lotesRemover) => { void gravar({ lotesAdd, lotesRemover }) }}
+          exigirData={ajusteQtd.delta > 0}
         />
       )}
 

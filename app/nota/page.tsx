@@ -250,7 +250,8 @@ export default function NotaPage() {
   }
 
   // ── Validação por item ──────────────────────────────────────────────────────
-  function itemValido(it: ItemEditavel): { ok: boolean; msg?: string } {
+  // validade: true = o que falta é a validade (item fica amarelo).
+  function itemValido(it: ItemEditavel): { ok: boolean; msg?: string; validade?: boolean } {
     if (it.decisao === 'ignorar') return { ok: true }
     if (it.decisao === null) return { ok: false, msg: 'Decida: usar produto do sistema, criar ou ignorar' }
     if (it.quantidade <= 0) return { ok: false, msg: 'Quantidade inválida' }
@@ -263,16 +264,22 @@ export default function NotaPage() {
       }
     }
 
+    // Validade obrigatória (produto existente que controla ou produto novo):
+    // os lotes, todos com data, têm que somar exatamente a quantidade.
     if (semValidade(it)) return { ok: true }
-    if (it.lotes.length === 0) return { ok: false, msg: 'Adicione ao menos um lote de validade' }
+    if (it.lotes.length === 0) return { ok: false, validade: true, msg: `Informe a validade das ${it.quantidade} unidades` }
     const hoje = hojeISO()
+    const semData = it.lotes.filter((l) => !l.data).reduce((s, l) => s + (Number(l.qtd) || 0), 0)
+    if (it.lotes.some((l) => !l.data)) {
+      return { ok: false, validade: true, msg: semData > 0 ? `Falta a validade de ${semData} ${semData === 1 ? 'unidade' : 'unidades'}` : 'Preencha a data de validade de todos os lotes' }
+    }
     for (const l of it.lotes) {
-      if (!l.data) return { ok: false, msg: 'Preencha a data de validade de todos os lotes' }
-      if (l.data < hoje) return { ok: false, msg: `Validade ${l.data} está no passado — verifique o ano` }
-      if (!(Number(l.qtd) > 0)) return { ok: false, msg: 'Quantidade do lote inválida' }
+      if (l.data < hoje) return { ok: false, validade: true, msg: `Validade ${l.data} está no passado — verifique o ano` }
+      if (!(Number(l.qtd) > 0)) return { ok: false, validade: true, msg: 'Quantidade do lote inválida' }
     }
     const soma = it.lotes.reduce((s, l) => s + Number(l.qtd), 0)
-    if (soma !== it.quantidade) return { ok: false, msg: `Lotes somam ${soma}, mas a quantidade é ${it.quantidade}` }
+    if (soma < it.quantidade) return { ok: false, validade: true, msg: `Faltam ${it.quantidade - soma} nos lotes (somam ${soma} de ${it.quantidade})` }
+    if (soma > it.quantidade) return { ok: false, validade: true, msg: `Os lotes passam ${soma - it.quantidade} do total (somam ${soma} de ${it.quantidade})` }
     return { ok: true }
   }
 
@@ -455,6 +462,7 @@ export default function NotaPage() {
   const naoIgnorados = itens.filter((i) => i.decisao !== 'ignorar')
   const pendentes = itens.filter((i) => i.decisao === null).length
   const podeConfirmar = naoIgnorados.length > 0 && validacoes.every((v) => v.ok)
+  const semValidadeCompleta = validacoes.filter((v) => v.validade).length
   const hoje = hojeISO()
 
   return (
@@ -491,9 +499,11 @@ export default function NotaPage() {
           const somaLotes = item.lotes.reduce((s, l) => s + (Number(l.qtd) || 0), 0)
           const diff = item.quantidade - somaLotes
           const temProduto = item.decisao === 'existente' || item.decisao === 'criar'
+          // Validade incompleta → amarelo; outras pendências → laranja.
+          const corPendencia = v.validade ? '#EAB308' : '#F97316'
 
           return (
-            <Card key={idx} style={{ padding: 14, opacity: ignorado ? 0.55 : 1, ...(!ignorado && !v.ok ? { borderColor: 'rgba(249,115,22,0.55)' } : {}) }}>
+            <Card key={idx} style={{ padding: 14, opacity: ignorado ? 0.55 : 1, ...(!ignorado && !v.ok ? (v.validade ? { borderColor: 'rgba(234,179,8,0.75)', background: 'rgba(234,179,8,0.08)' } : { borderColor: 'rgba(249,115,22,0.55)' }) : {}) }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: ignorado ? 4 : 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ color: D.text, fontSize: 15, fontWeight: 800, margin: 0, overflowWrap: 'anywhere' }}>{item.nome_nota}</p>
@@ -675,7 +685,7 @@ export default function NotaPage() {
                   )}
 
                   {!v.ok && v.msg && (
-                    <p style={{ color: '#F97316', fontSize: 12, fontWeight: 600, margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                    <p style={{ color: corPendencia, fontSize: 12, fontWeight: 600, margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                       <Icon nome="alert" size={16} /> {v.msg}
                     </p>
                   )}
@@ -694,7 +704,12 @@ export default function NotaPage() {
               {pendentes} item{pendentes !== 1 ? 's' : ''} aguardando decisão (criar ou ignorar)
             </p>
           )}
-          {pendentes === 0 && !podeConfirmar && naoIgnorados.length > 0 && (
+          {semValidadeCompleta > 0 && (
+            <p style={{ color: '#EAB308', fontSize: 12, fontWeight: 600, textAlign: 'center', margin: 0 }}>
+              {semValidadeCompleta} item{semValidadeCompleta !== 1 ? 's' : ''} sem validade completa
+            </p>
+          )}
+          {pendentes === 0 && semValidadeCompleta === 0 && !podeConfirmar && naoIgnorados.length > 0 && (
             <p style={{ color: '#F97316', fontSize: 12, fontWeight: 600, textAlign: 'center', margin: 0 }}>Revise os itens destacados antes de confirmar</p>
           )}
           {naoIgnorados.length === 0 && (

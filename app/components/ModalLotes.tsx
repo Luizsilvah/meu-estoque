@@ -7,8 +7,10 @@
 //   delta < 0 → quanto sai de cada lote, já pré-preenchido em FEFO. Se os lotes
 //               somam menos que o delta, tira tudo dos lotes e o resto sai sem lote.
 // Só monta a lista; quem chama grava (movimentacao_registrar / conferencia_ajustar).
-// O Lançamento rápido também usa, com exigirData (data obrigatória mesmo sem
-// lotes) e lotesIniciais* (abre com o que o item já tem).
+// exigirData (data obrigatória mesmo sem lotes): toda entrada da Movimentação,
+// do Scanner, do Lançamento rápido e o aumento no "Editar produto". Só a
+// Conferência deixa a data opcional. lotesIniciais* (Lançamento rápido) abre
+// com o que o item já tem.
 // Use `key` no componente para recomeçar o estado a cada abertura.
 import { useState } from 'react'
 
@@ -52,7 +54,7 @@ export default function ModalLotes({
   feedback: { msg: string; ok: boolean } | null
   onVoltar: () => void
   onConfirmar: (lotesAdd: LoteAdd[], lotesRemover: LoteRemover[]) => void
-  /** Entrada: data obrigatória mesmo se o produto ainda não tem lotes (Lançamento rápido). */
+  /** Entrada: data obrigatória mesmo se o produto ainda não tem lotes. */
   exigirData?: boolean
   /** Entrada: abre com estas linhas (quantidade 0 = em branco) e uma linha a mais com o que faltar. */
   lotesIniciaisAdd?: LoteAdd[]

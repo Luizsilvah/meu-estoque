@@ -82,7 +82,7 @@ export async function POST(req: Request) {
       const controla = !(item.produto_id && semValidade.has(item.produto_id))
       const lotes = !controla ? [] : Array.isArray(item.lotes) ? item.lotes : []
       if (controla) {
-        if (lotes.length === 0) throw new Error('Item sem validade')
+        if (lotes.length === 0) throw new Error(`Informe a validade das ${quantidade} unidades`)
         for (const l of lotes) {
           if (!l.data_validade) throw new Error('Lote sem data de validade')
           if (dataNoPassado(l.data_validade)) {

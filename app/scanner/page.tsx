@@ -382,6 +382,7 @@ export default function Scanner() {
           feedback={feedback}
           onVoltar={voltarParaQuantidade}
           onConfirmar={registrar}
+          exigirData={modalLotes.tipo === 'entrada'}
         />
       )}
     </Page>
