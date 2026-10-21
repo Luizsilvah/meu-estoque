@@ -34,7 +34,7 @@ function quando(iso: string) {
 }
 
 // Botões grandes de ação rápida (admin / quem tem mais de 3 funções), nesta ordem.
-const ACOES_RAPIDAS = ['movimentacao', 'estoque', 'conferencia']
+const ACOES_RAPIDAS = ['saida', 'movimentacao', 'estoque', 'conferencia']
 // Já têm lugar fixo na barra de baixo, então não se repetem na grade "Mais".
 const NA_BARRA = ['compras-quinta', 'scanner']
 
@@ -59,7 +59,7 @@ export default function Home() {
       .catch(() => {})
   })
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { cache: 'no-store' })
       .then((r) => r.json())
       .then((json) => {
         if (json.nome) setNomeUsuario(json.nome)
@@ -238,7 +238,8 @@ export default function Home() {
 
         {/* ── AÇÕES RÁPIDAS ── */}
         {!modoLista && rapidas.length > 0 && (
-          <section style={{ display: 'grid', gridTemplateColumns: `repeat(${rapidas.length}, minmax(0, 1fr))`, gap: 10, marginBottom: 22 }}>
+          // 4 botões numa linha ficam apertados em 360px: vira 2×2
+          <section style={{ display: 'grid', gridTemplateColumns: `repeat(${rapidas.length === 4 ? 2 : rapidas.length}, minmax(0, 1fr))`, gap: 10, marginBottom: 22 }}>
             {rapidas.map((f) => {
               const v = visual(f)
               return (

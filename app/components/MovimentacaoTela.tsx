@@ -1,0 +1,586 @@
+'use client'
+// Tela de movimentação compartilhada por /movimentacao (entrada e saída) e
+// /saida ("Dar saída", somenteSaida). Mesma lista, busca, chips, cards, scanner
+// e modais; somenteSaida só tira o caminho de entrada. Os padrões das props
+// reproduzem a /movimentacao — mudar aqui muda as duas telas.
+// Quem usa precisa envolver em <Suspense> (useSearchParams).
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+
+import { D } from '@/app/lib/theme'
+import FotoThumb from '@/app/components/FotoThumb'
+import Pagina from '@/app/components/ui/Page'
+import PageHeader from '@/app/components/ui/PageHeader'
+import SearchBar from '@/app/components/ui/SearchBar'
+import Chips from '@/app/components/ui/Chips'
+import Card, { CARD_THUMB } from '@/app/components/ui/Card'
+import Icon from '@/app/components/ui/Icon'
+import { buscarEstoque, invalidarEstoqueCache } from '@/app/lib/estoqueCache'
+import ModalLotes, { type LoteAdd, type LoteRemover } from '@/app/components/ModalLotes'
+
+type Produto = {
+  id: string
+  produto_id: string
+  qtd_atual: number
+  qtd_base: number
+  qtd_max: number
+  qtd_cozinha: number
+  produtos: { nome: string; unidade: string; foto_url: string | null; controla_validade?: boolean; fornecedores: { nome: string } | null } | null
+}
+
+import { Validade, formatarDataCurta, badgeValidade, controlaValidade } from '@/app/lib/validades'
+
+type Modal = { produto: Produto; tipo: 'entrada' | 'saida'; local: 'principal' | 'cozinha'; validade?: Validade } | null
+// Segundo passo: validades das unidades (entrada) ou lotes de onde sai (saída)
+type ModalLotesMov = { produto: Produto; tipo: 'entrada' | 'saida'; quantidade: number; local: 'principal' | 'cozinha' } | null
+
+export type MovimentacaoRegistrada = { tipo: 'entrada' | 'saida'; produto_id: string; quantidade: number; local: 'principal' | 'cozinha' }
+
+export default function MovimentacaoTela({
+  titulo = 'Movimentar', subtitulo = 'Entrada e saída', somenteSaida = false, onRegistrado, rodape,
+}: {
+  titulo?: string
+  subtitulo?: string
+  /** Só o botão "−" nos cards; o código bipado vai direto para a saída. */
+  somenteSaida?: boolean
+  /** Chamado depois de cada movimentação gravada com sucesso. */
+  onRegistrado?: (m: MovimentacaoRegistrada) => void
+  /** Conteúdo abaixo da lista (ex.: "Suas últimas saídas"). */
+  rodape?: React.ReactNode
+} = {}) {
+  const searchParams = useSearchParams()
+  const [itens, setItens] = useState<Produto[]>([])
+  const [validadesPorProduto, setValidadesPorProduto] = useState<Record<string, Validade[]>>({})
+  const [busca, setBusca] = useState('')
+  const [fornecedorAtivo, setFornecedorAtivo] = useState<string | null>(null)
+  const [soPedir, setSoPedir] = useState(false)
+  const [modal, setModal] = useState<Modal>(null)
+  const [modalLotes, setModalLotes] = useState<ModalLotesMov>(null)
+  const [salvandoLotes, setSalvandoLotes] = useState(false)
+  const [feedbackLotes, setFeedbackLotes] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [modalLocalSaida, setModalLocalSaida] = useState<{ produto: Produto } | null>(null)
+  const [localSelecionado, setLocalSelecionado] = useState<'principal' | 'cozinha'>('principal')
+  const [quantidade, setQuantidade] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [erro, setErro] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const [modalTipoScan, setModalTipoScan] = useState<Produto | null>(null)
+
+  const [scannerAberto, setScannerAberto] = useState(false)
+  const [scannerStatus, setScannerStatus] = useState<'lendo' | 'buscando' | 'nao_encontrado'>('lendo')
+  const qrcodeRef = useRef<any>(null)
+  const processandoRef = useRef(false)
+
+  const scannerFisicoBuffer = useRef('')
+  const scannerFisicoInicio = useRef(0)
+  const SCANNER_FISICO_TIMEOUT_MS = 300
+
+  useEffect(() => {
+    async function buscarItens() {
+      try {
+        const [json, resVal] = await Promise.all([buscarEstoque(), fetch('/api/validades/todos')])
+        setItens(json as unknown as Produto[])
+
+        if (resVal.ok) {
+          const valJson: Validade[] = await resVal.json()
+          if (Array.isArray(valJson)) {
+            const agrupado: Record<string, Validade[]> = {}
+            for (const v of valJson) {
+              if (!agrupado[v.produto_id]) agrupado[v.produto_id] = []
+              agrupado[v.produto_id].push(v)
+            }
+            setValidadesPorProduto(agrupado)
+          }
+        }
+      } catch (err) {
+        setErro(err instanceof Error ? err.message : 'Erro desconhecido')
+      } finally {
+        setLoading(false)
+      }
+    }
+    buscarItens()
+  }, [])
+
+  const fornecedores = useMemo(() => {
+    const nomes = itens.map((i) => i.produtos?.fornecedores?.nome).filter((n): n is string => Boolean(n))
+    return [...new Set(nomes)].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [itens])
+
+  const itensFiltrados = useMemo(() =>
+    itens
+      .filter((item) => item.produtos?.nome.toLowerCase().includes(busca.toLowerCase()))
+      .filter((item) => !fornecedorAtivo || item.produtos?.fornecedores?.nome === fornecedorAtivo)
+      .filter((item) => !soPedir || item.qtd_atual <= item.qtd_base)
+      .sort((a, b) => (a.produtos?.nome ?? '').localeCompare(b.produtos?.nome ?? '', 'pt-BR')),
+    [itens, busca, fornecedorAtivo, soPedir])
+
+  function abrirModal(produto: Produto, tipo: 'entrada' | 'saida', local: 'principal' | 'cozinha' = 'principal', validade?: Validade) {
+    setModal({ produto, tipo, local, validade }); setQuantidade('1'); setFeedback(null)
+  }
+
+  function fecharModal() { setModal(null); setQuantidade('') }
+
+  function abrirSaida(item: Produto) {
+    if ((item.qtd_cozinha ?? 0) > 0) {
+      setLocalSelecionado('principal')
+      setModalLocalSaida({ produto: item })
+    } else {
+      abrirModal(item, 'saida', 'principal')
+    }
+  }
+
+  function confirmarLocal() {
+    if (!modalLocalSaida) return
+    const item = modalLocalSaida.produto
+    setModalLocalSaida(null)
+    abrirModal(item, 'saida', localSelecionado)
+  }
+
+  // Grava quantidade + histórico + lotes numa chamada só (RPC movimentacao_registrar).
+  async function registrarMovimentacao(lotesAdd: LoteAdd[], lotesRemover: LoteRemover[]) {
+    if (!modalLotes) return
+    const { produto, tipo, quantidade: qtd, local } = modalLotes
+    setSalvandoLotes(true); setFeedbackLotes(null)
+    try {
+      const res = await fetch('/api/movimentacao', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ produto_id: produto.produto_id, tipo, quantidade: qtd, local, lotes_add: lotesAdd, lotes_remover: lotesRemover }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.erro) { setFeedbackLotes({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+      invalidarEstoqueCache()
+      setItens((prev) => prev.map((item) =>
+        item.id === produto.id ? { ...item, qtd_atual: json.qtd_atual, qtd_cozinha: json.qtd_cozinha ?? item.qtd_cozinha } : item
+      ))
+      // Rebusca os lotes reais — um lote novo criado pela RPC não tem id no cliente.
+      if (lotesAdd.length > 0 || lotesRemover.length > 0) {
+        const resVal = await fetch(`/api/validades?produto_id=${produto.produto_id}`)
+        if (resVal.ok) {
+          const lista: Validade[] = await resVal.json()
+          if (Array.isArray(lista)) setValidadesPorProduto((prev) => ({ ...prev, [produto.produto_id]: lista }))
+        }
+      }
+      setFeedbackLotes({ msg: tipo === 'entrada' ? 'Entrada registrada!' : `Saída de ${qtd} ${produto.produtos?.unidade ?? ''} registrada!`, ok: true })
+      onRegistrado?.({ tipo, produto_id: produto.produto_id, quantidade: qtd, local })
+      setTimeout(() => { setModalLotes(null); setFeedbackLotes(null) }, 900)
+    } catch (err) {
+      setFeedbackLotes({ msg: err instanceof Error ? err.message : 'Erro', ok: false })
+    } finally { setSalvandoLotes(false) }
+  }
+
+  function voltarParaQuantidade() {
+    if (!modalLotes) return
+    const { produto, tipo, local, quantidade: qtd } = modalLotes
+    setModalLotes(null)
+    abrirModal(produto, tipo, local)
+    setQuantidade(String(qtd))
+  }
+
+  useEffect(() => {
+    if (loading || itens.length === 0) return
+    const nomeBuscado = searchParams.get('produto')
+    const tipoBuscado = searchParams.get('tipo') as 'entrada' | 'saida' | null
+    if (!nomeBuscado || !tipoBuscado) return
+    const item = itens.find((i) => i.produtos?.nome.toLowerCase() === nomeBuscado.toLowerCase())
+    if (!item) return
+    if (tipoBuscado === 'saida') abrirSaida(item)
+    else if (!somenteSaida) abrirModal(item, 'entrada')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, itens])
+
+  async function salvar() {
+    if (!modal || !quantidade || Number(quantidade) <= 0) return
+
+    // A quantidade aqui é só o total — o próximo passo pede as validades
+    // (entrada) ou distribui entre os lotes (saída), e aí grava tudo junto.
+    const { produto, tipo, local } = modal
+    const qtd = Math.floor(Number(quantidade))
+
+    // Produto que não controla validade: grava direto, sem o passo de lotes.
+    if (!controlaValidade(produto.produtos)) {
+      setSalvando(true); setFeedback(null)
+      try {
+        const res = await fetch('/api/movimentacao', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ produto_id: produto.produto_id, tipo, quantidade: qtd, local, lotes_add: [], lotes_remover: [] }),
+        })
+        const json = await res.json()
+        if (!res.ok || json.erro) { setFeedback({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+        invalidarEstoqueCache()
+        setItens((prev) => prev.map((item) =>
+          item.id === produto.id ? { ...item, qtd_atual: json.qtd_atual, qtd_cozinha: json.qtd_cozinha ?? item.qtd_cozinha } : item
+        ))
+        setFeedback({ msg: tipo === 'entrada' ? 'Entrada registrada!' : `Saída de ${qtd} ${produto.produtos?.unidade ?? ''} registrada!`, ok: true })
+        onRegistrado?.({ tipo, produto_id: produto.produto_id, quantidade: qtd, local })
+        setTimeout(() => { fecharModal(); setFeedback(null) }, 900)
+      } catch (err) {
+        setFeedback({ msg: err instanceof Error ? err.message : 'Erro', ok: false })
+      } finally { setSalvando(false) }
+      return
+    }
+
+    setFeedbackLotes(null)
+    setModalLotes({ produto, tipo, quantidade: qtd, local })
+    fecharModal()
+  }
+
+  async function buscarPorCodigo(codigo: string) {
+    try {
+      const res = await fetch(`/api/produto/barcode?codigo=${encodeURIComponent(codigo)}`)
+      const json = await res.json()
+      if (!res.ok || json.erro) return
+      const item = itens.find((i) => i.produto_id === json.produto_id)
+      // Só saída: não pergunta "entrada ou saída?", vai direto para a saída.
+      const escolher = (p: Produto) => (somenteSaida ? abrirSaida(p) : setModalTipoScan(p))
+      if (item) {
+        escolher(item)
+      } else {
+        const temp: Produto = {
+          id: json.id ?? '', produto_id: json.produto_id, qtd_atual: json.qtd_atual, qtd_base: json.qtd_base, qtd_max: json.qtd_max,
+          qtd_cozinha: json.qtd_cozinha ?? 0,
+          produtos: { nome: json.nome, unidade: json.unidade, foto_url: null, controla_validade: json.controla_validade, fornecedores: json.fornecedor_nome ? { nome: json.fornecedor_nome } : null },
+        }
+        escolher(temp)
+      }
+    } catch { /* ignorar */ }
+  }
+
+  function handleBuscaKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      const elapsed = Date.now() - scannerFisicoInicio.current
+      const codigo = scannerFisicoBuffer.current
+      scannerFisicoBuffer.current = ''; scannerFisicoInicio.current = 0
+      if (codigo.length >= 3 && elapsed < SCANNER_FISICO_TIMEOUT_MS) { e.preventDefault(); setBusca(''); buscarPorCodigo(codigo) }
+      return
+    }
+    if (e.key.length === 1) {
+      if (scannerFisicoBuffer.current === '') scannerFisicoInicio.current = Date.now()
+      scannerFisicoBuffer.current += e.key
+    } else if (e.key === 'Backspace') {
+      scannerFisicoBuffer.current = scannerFisicoBuffer.current.slice(0, -1)
+    }
+  }
+
+  async function abrirScanner() {
+    processandoRef.current = false; setScannerStatus('lendo'); setScannerAberto(true)
+    setTimeout(async () => {
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode')
+        const qrcode = new Html5Qrcode('mov-scanner-div')
+        qrcodeRef.current = qrcode
+        await qrcode.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 260, height: 100 } },
+          async (codigo: string) => {
+            if (processandoRef.current) return
+            processandoRef.current = true
+            try { await qrcode.stop() } catch { /* ignorar */ }
+            setScannerStatus('buscando')
+            try {
+              const res = await fetch(`/api/produto/barcode?codigo=${encodeURIComponent(codigo)}`)
+              const json = await res.json()
+              if (!res.ok || json.erro) { setScannerStatus('nao_encontrado'); return }
+              setScannerAberto(false); buscarPorCodigo(codigo)
+            } catch { setScannerStatus('nao_encontrado') }
+          },
+          () => {}
+        )
+      } catch { setScannerAberto(false) }
+    }, 150)
+  }
+
+  async function fecharScanner() {
+    try { await qrcodeRef.current?.stop() } catch { /* ignorar */ }
+    qrcodeRef.current = null; setScannerAberto(false)
+  }
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: D.bg }}>
+      <p style={{ color: D.text2, fontSize: 14 }}>Carregando...</p>
+    </div>
+  )
+
+  if (erro) return (
+    <div style={{ minHeight: '100vh', padding: 24, background: D.bg }}>
+      <p style={{ color: '#EF4444', fontWeight: 700 }}>Erro</p>
+      <pre style={{ color: '#EF4444', fontSize: 12, marginTop: 8, background: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: 16, whiteSpace: 'pre-wrap' }}>{erro}</pre>
+    </div>
+  )
+
+  const qtdMaxSaida = modal?.tipo === 'saida'
+    // Principal = total − cozinha (a RPC recusa saída do principal acima disso)
+    ? (modal.local === 'cozinha' ? (modal.produto.qtd_cozinha ?? 0) : modal.produto.qtd_atual - (modal.produto.qtd_cozinha ?? 0))
+    : Infinity
+  const qtdPrecisaPedir = itens.filter((i) => i.qtd_atual <= i.qtd_base).length
+  const qtdSaidaExcedida = modal?.tipo === 'saida' && !!quantidade && Number(quantidade) > qtdMaxSaida
+
+  return (
+    <Pagina>
+
+      <PageHeader titulo={titulo} subtitulo={subtitulo} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+        {/* Busca + scanner */}
+        <SearchBar value={busca} onChange={setBusca} onKeyDown={handleBuscaKeyDown} onScanClick={abrirScanner} />
+
+        {/* Pedir + fornecedores */}
+        <Chips itens={[
+          { chave: 'todos', label: 'Todos', ativo: !fornecedorAtivo && !soPedir, onClick: () => { setFornecedorAtivo(null); setSoPedir(false) } },
+          { chave: 'pedir', label: `Pedir ${qtdPrecisaPedir}`, ativo: soPedir, onClick: () => setSoPedir((v) => !v) },
+          ...fornecedores.map((f) => ({
+            chave: `forn:${f}`, label: f, ativo: fornecedorAtivo === f, onClick: () => setFornecedorAtivo(f === fornecedorAtivo ? null : f),
+          })),
+        ]} />
+
+        {/* Lista */}
+        {itensFiltrados.length === 0 ? (
+          <p style={{ color: D.text2, fontSize: 14, textAlign: 'center', paddingTop: 40 }}>Nenhum produto encontrado.</p>
+        ) : (
+          itensFiltrados.map((item) => {
+            const validades = validadesPorProduto[item.produto_id] ?? []
+            const badge = badgeValidade(validades)
+            const valSorted = [...validades].sort((a, b) => a.data_validade.localeCompare(b.data_validade))
+            const valTexto = valSorted.map((v) => `${formatarDataCurta(v.data_validade)} (${v.quantidade}un)`).join(' · ')
+            const qtdCozinha = item.qtd_cozinha ?? 0
+
+            return (
+              <Card key={item.produto_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px 14px 16px' }}>
+                <FotoThumb src={item.produtos?.foto_url ?? null} size={CARD_THUMB} radius={14} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: D.text, fontWeight: 800, fontSize: 16, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.produtos?.nome ?? '—'}
+                  </p>
+                  <p style={{ color: D.text2, fontSize: 13, margin: '3px 0 0', lineHeight: 1.4 }}>
+                    {item.qtd_atual} {item.produtos?.unidade} · Principal {item.qtd_atual - qtdCozinha} · Cozinha {qtdCozinha}
+                  </p>
+                  {(badge || valTexto) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, minWidth: 0 }}>
+                      {badge && (
+                        <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: badge.bg, color: badge.cor }}>
+                          {badge.texto}
+                        </span>
+                      )}
+                      {valTexto && (
+                        <span style={{ fontSize: 12, color: D.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>Val: {valTexto}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button onClick={() => abrirSaida(item)} aria-label={`Saída de ${item.produtos?.nome ?? 'produto'}`}
+                    style={{ ...botaoQuadrado, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
+                    <Icon nome="minus" size={22} traco={2.6} />
+                  </button>
+                  {!somenteSaida && (
+                    <button onClick={() => abrirModal(item, 'entrada')} aria-label={`Entrada de ${item.produtos?.nome ?? 'produto'}`}
+                      style={{ ...botaoQuadrado, background: 'rgba(16,185,129,0.15)', color: '#10B981' }}>
+                      <Icon nome="plus" size={22} traco={2.6} />
+                    </button>
+                  )}
+                </div>
+              </Card>
+            )
+          })
+        )}
+      </div>
+
+      {rodape}
+
+      {/* Overlay do scanner */}
+      {scannerAberto && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', background: '#000' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '48px 20px 16px' }}>
+            <p style={{ color: '#fff', fontWeight: 600 }}>Aponte para o código de barras</p>
+            <button onClick={fecharScanner} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}>✕</button>
+          </div>
+          <div id="mov-scanner-div" style={{ flex: 1 }} />
+
+          {scannerStatus === 'buscando' && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}>
+              <p style={{ color: '#fff', fontSize: 14 }}>Buscando produto...</p>
+            </div>
+          )}
+
+          {scannerStatus === 'nao_encontrado' && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', gap: 16 }}>
+              <p style={{ color: '#fff', fontWeight: 600 }}>Produto não encontrado</p>
+              <button onClick={() => { processandoRef.current = false; setScannerStatus('lendo'); abrirScanner(); setScannerAberto(false) }}
+                style={{ padding: '12px 24px', borderRadius: 16, background: '#6366F1', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+                Tentar novamente
+              </button>
+              <button onClick={fecharScanner} style={{ color: D.text2, fontSize: 14, background: 'none', border: 'none', cursor: 'pointer' }}>Cancelar</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal tipo de movimentação após scan */}
+      {modalTipoScan && (
+        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 60, background: 'rgba(0,0,0,0.6)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setModalTipoScan(null) }}>
+          <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
+            <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Código escaneado</p>
+            <p style={{ color: D.text, fontWeight: 700, fontSize: 16, marginBottom: 2 }}>{modalTipoScan.produtos?.nome}</p>
+            <p style={{ color: D.text2, fontSize: 13, marginBottom: 24 }}>
+              {modalTipoScan.qtd_atual} em estoque · {modalTipoScan.produtos?.unidade}
+            </p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={() => { const item = modalTipoScan; setModalTipoScan(null); abrirModal(item, 'entrada') }}
+                style={{ flex: 1, padding: '20px 12px', borderRadius: 20, background: '#10B981', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>+</span>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>Entrada</span>
+              </button>
+              <button
+                onClick={() => { const item = modalTipoScan; setModalTipoScan(null); abrirSaida(item) }}
+                style={{ flex: 1, padding: '20px 12px', borderRadius: 20, background: '#EF4444', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>−</span>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>Saída</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal seleção de local (saída) */}
+      {modalLocalSaida && (
+        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.6)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setModalLocalSaida(null) }}>
+          <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
+            <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Saída</p>
+            <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{modalLocalSaida.produto.produtos?.nome}</p>
+            <p style={{ color: D.text2, fontSize: 12, marginBottom: 16 }}>De qual local?</p>
+
+            <div role="radiogroup" aria-label="Local da saída" style={{ display: 'flex', background: D.input, borderRadius: 16, padding: 4, gap: 4, marginBottom: 20 }}>
+              {([
+                { local: 'principal' as const, label: 'Principal', qtd: modalLocalSaida.produto.qtd_atual - (modalLocalSaida.produto.qtd_cozinha ?? 0) },
+                { local: 'cozinha' as const, label: 'Cozinha', qtd: modalLocalSaida.produto.qtd_cozinha ?? 0 },
+              ]).map(({ local, label, qtd }) => {
+                const ativo = localSelecionado === local
+                return (
+                  <button key={local} role="radio" aria-checked={ativo} onClick={() => setLocalSelecionado(local)}
+                    style={{ flex: 1, padding: '10px 8px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                      background: ativo ? '#6366F1' : 'transparent', color: ativo ? '#fff' : D.text2,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                    <span style={{ fontSize: 15, fontWeight: 800 }}>{label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.85 }}>{qtd} {modalLocalSaida.produto.produtos?.unidade}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <button onClick={confirmarLocal}
+              style={{ width: '100%', padding: '14px', borderRadius: 16, background: '#EF4444', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+              Continuar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de lotes — validade na entrada, lotes (FEFO) na saída */}
+      {modalLotes && (
+        <ModalLotes
+          key={`${modalLotes.produto.produto_id}-${modalLotes.tipo}-${modalLotes.quantidade}`}
+          produtoNome={modalLotes.produto.produtos?.nome ?? ''}
+          unidade={modalLotes.produto.produtos?.unidade ?? 'un'}
+          delta={modalLotes.tipo === 'entrada' ? modalLotes.quantidade : -modalLotes.quantidade}
+          validades={validadesPorProduto[modalLotes.produto.produto_id] ?? []}
+          titulo={modalLotes.tipo === 'entrada' ? 'Entrada — validade das unidades' : `Saída${modalLotes.local === 'cozinha' ? ' da cozinha' : ''} — de quais lotes?`}
+          textoConfirmar={modalLotes.tipo === 'entrada' ? 'Registrar entrada' : 'Confirmar saída'}
+          corConfirmar={modalLotes.tipo === 'entrada' ? '#10B981' : '#EF4444'}
+          salvando={salvandoLotes}
+          feedback={feedbackLotes}
+          onVoltar={voltarParaQuantidade}
+          onConfirmar={registrarMovimentacao}
+          exigirData={modalLotes.tipo === 'entrada'}
+        />
+      )}
+
+      {/* Modal movimentação (saída apenas) */}
+      {modal && (
+        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.6)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) fecharModal() }}>
+          <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: modal.tipo === 'entrada' ? '#10B981' : '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 18 }}>
+                {modal.tipo === 'entrada' ? '+' : <span style={{ display: 'block', width: 10, height: 2, background: '#fff', borderRadius: 2 }} />}
+              </div>
+              <div>
+                <p style={{ fontSize: 11, color: D.text2, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  {modal.tipo === 'entrada' ? 'Entrada' : 'Saída'}
+                </p>
+                <p style={{ color: D.text, fontWeight: 600, fontSize: 14 }}>{modal.produto.produtos?.nome}</p>
+              </div>
+            </div>
+
+            <p style={{ color: D.text2, fontSize: 12, marginLeft: 44, marginBottom: modal.validade ? 4 : 20 }}>
+              {modal.tipo === 'saida' && modal.local === 'cozinha'
+                ? <>Cozinha: <span style={{ fontWeight: 700, color: D.text }}>{modal.produto.qtd_cozinha}</span> {modal.produto.produtos?.unidade}</>
+                : <>Estoque atual: <span style={{ fontWeight: 700, color: D.text }}>{modal.produto.qtd_atual}</span> · {modal.produto.produtos?.unidade}</>
+              }
+            </p>
+            {modal.validade && (
+              <p style={{ fontSize: 12, marginLeft: 44, marginBottom: 20 }}>
+                <span style={{ color: D.text2 }}>Lote: </span>
+                <span style={{ fontWeight: 700, color: D.text }}>{new Date(modal.validade.data_validade + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                <span style={{ color: D.text2 }}> · {modal.validade.quantidade}un disponível</span>
+              </p>
+            )}
+
+            <label style={{ display: 'block', fontSize: 12, color: D.text2, fontWeight: 600, marginBottom: 8, marginLeft: 2 }}>Quantidade</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <button
+                onClick={() => setQuantidade((q) => String(Math.max(1, (Number(q) || 1) - 1)))}
+                style={{ width: 48, height: 56, borderRadius: 14, border: `2px solid ${modal.tipo === 'entrada' ? '#10B981' : '#EF4444'}`, background: D.input, color: modal.tipo === 'entrada' ? '#10B981' : '#EF4444', fontSize: 26, fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                −
+              </button>
+              <input type="number" inputMode="numeric" min="1" value={quantidade}
+                onChange={(e) => setQuantidade(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onKeyDown={(e) => { if (e.key === 'Enter') salvar() }}
+                autoFocus
+                style={{ flex: 1, border: `2px solid ${modal.tipo === 'entrada' ? '#10B981' : '#EF4444'}`, borderRadius: 16, padding: '12px', fontSize: 28, fontWeight: 800, textAlign: 'center', color: D.text, background: D.input, outline: 'none', boxSizing: 'border-box' }}
+              />
+              <button
+                onClick={() => setQuantidade((q) => modal.tipo === 'saida' ? String(Math.min(qtdMaxSaida, (Number(q) || 0) + 1)) : String((Number(q) || 0) + 1))}
+                style={{ width: 48, height: 56, borderRadius: 14, border: `2px solid ${modal.tipo === 'entrada' ? '#10B981' : '#EF4444'}`, background: modal.tipo === 'entrada' ? '#10B981' : '#EF4444', color: '#fff', fontSize: 26, fontWeight: 800, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                +
+              </button>
+            </div>
+
+            {modal.tipo === 'saida' && qtdSaidaExcedida && (
+              <p style={{ fontSize: 12, color: '#EF4444', fontWeight: 600, marginBottom: 8, textAlign: 'center' }}>
+                Quantidade máxima disponível: {qtdMaxSaida}
+              </p>
+            )}
+
+            {feedback && (
+              <p style={{ fontSize: 14, textAlign: 'center', fontWeight: 600, marginBottom: 12, color: feedback.ok ? '#10B981' : '#EF4444' }}>
+                {feedback.msg}
+              </p>
+            )}
+
+            <button onClick={salvar} disabled={salvando || !quantidade || Number(quantidade) <= 0 || qtdSaidaExcedida}
+              style={{ width: '100%', padding: '14px', borderRadius: 16, background: modal.tipo === 'entrada' ? '#10B981' : '#EF4444', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: (salvando || !quantidade || Number(quantidade) <= 0) ? 0.4 : 1 }}>
+              {salvando ? 'Salvando...' : `Confirmar ${modal.tipo === 'entrada' ? 'entrada' : 'saída'}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+    </Pagina>
+  )
+}
+
+const botaoQuadrado: React.CSSProperties = {
+  width: 48, height: 48, borderRadius: 14, border: 'none', cursor: 'pointer', flexShrink: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+}

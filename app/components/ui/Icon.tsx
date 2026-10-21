@@ -42,6 +42,7 @@ const PATHS: Record<string, React.ReactNode> = {
   send: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" /></>,
   lock: <><rect x="5" y="11" width="14" height="10" rx="2.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
+  boxOut: <><path d="M3 9h18v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9Z" /><path d="M3 9l2-4h4M21 9l-2-4h-4" /><path d="M12 15V2M8.5 5.5 12 2l3.5 3.5" /></>,
   zap: <><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" /></>,
 }
 

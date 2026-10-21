@@ -58,7 +58,7 @@ export default function BottomNav() {
   useEffect(() => {
     if (oculta) return
     let ativo = true
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { cache: 'no-store' })
       .then((r) => r.json())
       .then((json) => {
         if (!ativo) return

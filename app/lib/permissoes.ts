@@ -46,6 +46,9 @@ export const FUNCOES: Funcao[] = [
     gradient: 'linear-gradient(145deg,#7C3AED,#4C1D95)', shadow: '0 4px 20px rgba(124,58,237,0.25)' },
   { id: 'movimentacao',  href: '/movimentacao',  emoji: '🔄', nome: 'Movimentação',  grupo: 'Estoque', padrao: true,  descricao: 'Registrar entradas e saídas',
     gradient: 'linear-gradient(145deg,#2563EB,#1E40AF)', shadow: '0 4px 20px rgba(37,99,235,0.25)' },
+  // Tela só de saída, para o dia a dia. Herda de Movimentação enquanto a chave
+  // não existir (quem já movimenta continua vendo); grava pela mesma rota.
+  { id: 'saida',         href: '/saida',         emoji: '📤', nome: 'Dar saída',     grupo: 'Estoque', padrao: true,  herdaDe: 'movimentacao', descricao: 'Baixar produto do estoque, rápido' },
   { id: 'historico', href: '/historico', emoji: '📋', nome: 'Histórico', grupo: 'Relatórios', padrao: true,  descricao: 'Movimentações registradas' },
   { id: 'chat',   href: '/chat',           emoji: '💬', nome: 'Chat IA', grupo: 'Equipe e chat', padrao: true,  descricao: 'Conversar com a equipe e a IA' },
   { id: 'transferencia', href: '/transferencia', emoji: '↔️', nome: 'Transferência', grupo: 'Estoque', padrao: true,  descricao: 'Mover entre principal e cozinha' },

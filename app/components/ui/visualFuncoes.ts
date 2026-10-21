@@ -19,6 +19,7 @@ export const COR = {
 const VISUAL: Record<string, { icone: string; cor: string; nome?: string; curto?: string }> = {
   estoque:                 { icone: 'box',       cor: COR.roxo },
   movimentacao:            { icone: 'upDown',    cor: COR.azul, curto: 'Movimentar' },
+  saida:                   { icone: 'boxOut',    cor: COR.vermelho },
   conferencia:             { icone: 'check',     cor: COR.verde },
   historico:               { icone: 'clock',     cor: COR.amarelo },
   chat:                    { icone: 'chat',      cor: COR.rosa, curto: 'Chat' },
