@@ -31,15 +31,16 @@ function situacaoDe(i: ItemPrevisaoCompra): Situacao {
   return Number(i.estoque_previsto) <= 0 ? 'ACABA_ANTES' : 'QUINTA'
 }
 
-// qtd_sugerida da view = ceil(consumo × (dias até a quinta + 7) + mínimo − atual),
-// nunca negativa. Item crítico com máximo cadastrado completa até o máximo,
-// se isso for mais que a sugestão (evita "comprar 0" em item parado no mínimo).
+// necessidade = qtd_sugerida da view = ceil(consumo × (dias até a quinta + 7) + mínimo − atual),
+// nunca negativa. Com máximo cadastrado: completa até o máximo, e só passa dele
+// se o consumo pedir mais. Sem máximo: a necessidade, e no mínimo 1 (o item
+// está na lista, então "comprar 0" não faz sentido).
 function quantoComprar(i: ItemPrevisaoCompra): number {
-  const sugerida = Math.max(0, Number(i.qtd_sugerida))
-  if (i.status === 'CRITICO' && Number(i.qtd_max) > 0) {
-    return Math.max(sugerida, Math.ceil(Number(i.qtd_max) - Number(i.qtd_atual)))
+  const necessidade = Math.max(0, Number(i.qtd_sugerida))
+  if (Number(i.qtd_max) > 0) {
+    return Math.max(Math.ceil(Number(i.qtd_max) - Number(i.qtd_atual)), necessidade)
   }
-  return sugerida
+  return Math.max(1, necessidade)
 }
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -47,11 +48,15 @@ const NUM = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 
 const valorItem = (i: Item) => (i.preco_custo != null ? i.comprar * Number(i.preco_custo) : null)
 
-// "Tem 3 kg · gasta ~2 por semana · mínimo 5 → comprar 6"
+// "Tem 1 un · máximo 4 · gasta ~0,7 por semana → comprar 3"
+// (sem máximo cadastrado mostra o mínimo no lugar)
 function motivo(i: Item): string {
   const porSemana = Number(i.consumo_medio_diario) * 7
   const gasto = porSemana > 0 ? `gasta ~${NUM.format(porSemana)} por semana` : 'sem saída no último mês'
-  return `Tem ${NUM.format(Number(i.qtd_atual))} ${i.unidade} · ${gasto} · mínimo ${NUM.format(Number(i.estoque_minimo))} → comprar ${i.comprar}`
+  const limite = Number(i.qtd_max) > 0
+    ? `máximo ${NUM.format(Number(i.qtd_max))}`
+    : `mínimo ${NUM.format(Number(i.estoque_minimo))}`
+  return `Tem ${NUM.format(Number(i.qtd_atual))} ${i.unidade} · ${limite} · ${gasto} → comprar ${i.comprar}`
 }
 
 // Mesma mensagem que o Checklist mandava
@@ -309,6 +314,9 @@ export default function Compras() {
                         {info.texto}
                       </span>
                       <span style={{ display: 'block', fontSize: 12, color: D.text2, marginTop: 4, lineHeight: 1.4 }}>{motivo(item)}</span>
+                      {!(Number(item.qtd_max) > 0) && (
+                        <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#F59E0B', marginTop: 3 }}>sem máximo cadastrado</span>
+                      )}
                     </span>
                     <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0, opacity: marcado ? 0.5 : 1 }}>
                       <span style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: info.cor, fontVariantNumeric: 'tabular-nums' }}>{item.comprar}</span>
