@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 import { createSupabaseServer } from '@/app/lib/supabase-server'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 type ResultadoTransferir = { qtd_atual: number; qtd_cozinha: number }
 
@@ -7,6 +8,8 @@ export async function POST(request: Request) {
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, ['transferencia', 'estoque'])
+  if (negado) return negado
   let body: { produto_id: string; quantidade: number; direction?: 'cozinha' | 'principal' }
   try { body = await request.json() } catch {
     return Response.json({ erro: 'Body inválido' }, { status: 400 })

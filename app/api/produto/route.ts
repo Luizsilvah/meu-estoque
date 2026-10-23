@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
 import { createSupabaseServer } from '../../lib/supabase-server'
+import { exigirPermissao, temPermissao } from '../../lib/exigirPermissao'
 
 async function autenticar() {
   const s = await createSupabaseServer()
@@ -8,7 +9,8 @@ async function autenticar() {
 }
 
 export async function DELETE(request: Request) {
-  if (!await autenticar()) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(await autenticar(), 'cadastrar')
+  if (negado) return negado
 
   const { searchParams } = new URL(request.url)
   const produto_id = searchParams.get('produto_id')
@@ -34,7 +36,13 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!await autenticar()) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const user = await autenticar()
+  const negado = await exigirPermissao(user, 'estoque')
+  if (negado) return negado
+  // Só admin vê o preço de custo (GET /api/estoque manda null para os outros):
+  // de quem não é admin o preço é ignorado, senão salvar o formulário com o
+  // campo vazio apagaria o preço cadastrado.
+  const ehAdmin = await temPermissao(user!.id, 'admin')
 
   const body = await request.json().catch(() => null)
   // qtd_atual/qtd_cozinha NÃO são gravadas aqui: mudar a quantidade sem mexer
@@ -52,7 +60,7 @@ export async function PATCH(request: Request) {
   const produtoUpdate: Record<string, unknown> = { nome: nome.trim(), fornecedor_id, unidade: unidade.trim() }
   if (foto_url !== undefined) produtoUpdate.foto_url = foto_url
   if (codigo_barras !== undefined) produtoUpdate.codigo_barras = codigo_barras
-  if (preco_custo !== undefined) produtoUpdate.preco_custo = preco_custo != null ? Number(preco_custo) : null
+  if (ehAdmin && preco_custo !== undefined) produtoUpdate.preco_custo = preco_custo != null ? Number(preco_custo) : null
   if (typeof controla_validade === 'boolean') produtoUpdate.controla_validade = controla_validade
 
   const { error: erroProduto } = await supabase

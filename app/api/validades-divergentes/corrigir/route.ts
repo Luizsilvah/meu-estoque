@@ -14,6 +14,7 @@
 // de milissegundos, aceitável para uma tela de correção manual.
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 import { createSupabaseServer } from '@/app/lib/supabase-server'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 type LoteAdd = { data_validade: string; quantidade: number }
 type LoteRemover = { validade_id: string; quantidade: number }
@@ -27,6 +28,8 @@ export async function POST(request: Request) {
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, 'validades-divergentes')
+  if (negado) return negado
 
   const body = await request.json().catch(() => null)
   const { produto_id, lotes_add, lotes_remover } = body ?? {}

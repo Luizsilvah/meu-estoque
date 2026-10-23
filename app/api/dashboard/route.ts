@@ -1,6 +1,7 @@
 // Endpoint GET /api/dashboard — agrega os dados resumidos exibidos na tela inicial
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
 import { createSupabaseServer } from '../../lib/supabase-server'
+import { temPermissao } from '@/app/lib/exigirPermissao'
 
 // Contagens mudam a cada movimentação: nunca cachear
 export const dynamic = 'force-dynamic'
@@ -106,5 +107,15 @@ export async function GET() {
     return preco != null ? soma + item.qtd_atual * preco : soma
   }, 0)
 
-  return Response.json({ total, precisamPedir: precisamPedir.length, estoqueOk, vencendo7d, listaPedir, listaVencendo, valorEstoque, criticos, comprarQuinta, valorCompraQuinta, validadesDivergentes }, { headers: { 'Cache-Control': 'no-store' } })
+  // Tela inicial é de todos, mas os valores em R$ não: ≈ compra de quinta só
+  // para quem tem Compras; valor do estoque só para admin. Sem permissão → null.
+  const [veCompra, ehAdmin] = await Promise.all([temPermissao(user.id, 'compras-quinta'), temPermissao(user.id, 'admin')])
+
+  return Response.json({
+    total, precisamPedir: precisamPedir.length, estoqueOk, vencendo7d, listaPedir, listaVencendo,
+    valorEstoque: ehAdmin ? valorEstoque : null,
+    criticos, comprarQuinta,
+    valorCompraQuinta: veCompra ? valorCompraQuinta : null,
+    validadesDivergentes,
+  }, { headers: { 'Cache-Control': 'no-store' } })
 }

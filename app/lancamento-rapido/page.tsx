@@ -192,11 +192,25 @@ function resultadosBusca(texto: string, catalogo: ProdutoCatalogo[]): Candidato[
  * lotes — assim duas saídas do mesmo produto não sugerem o mesmo lote e o
  * aviso de "estoque insuficiente" considera o que já saiu antes na lista.
  */
+// Mesma regra de POST /api/lancamento-rapido/lancar: entrada = Movimentação;
+// saída = Movimentação ou Dar saída; transferência = Transferência.
+type PermLancamento = { entrada: boolean; saida: boolean; transf: boolean }
+
+function permiteTipo(perm: PermLancamento, tipo: TipoLancamento | null): boolean {
+  return tipo === 'transferencia' ? perm.transf : tipo === 'saida' ? perm.saida : tipo === 'entrada' ? perm.entrada : false
+}
+
+/** Tipos sem permissão, para o aviso ('' = pode tudo). */
+function semPermissao(perm: PermLancamento): string {
+  const faltam = [!perm.saida && 'saída', !perm.entrada && 'entrada', !perm.transf && 'transferência'].filter(Boolean)
+  return faltam.length === 3 ? 'nenhum tipo' : faltam.join(', ')
+}
+
 function analisar(
   lista: ItemLista[],
   estoquePorId: Map<string, ItemEstoque>,
   validadesPorProduto: Record<string, Validade[]>,
-  perm: { mov: boolean; transf: boolean },
+  perm: PermLancamento,
 ): Analise[] {
   const simLotes = new Map<string, Validade[]>()
   const simQtd = new Map<string, { atual: number; cozinha: number }>()
@@ -216,7 +230,7 @@ function analisar(
     const pendencias: Pendencia[] = []
     const produto = item.produto_id ? estoquePorId.get(item.produto_id) ?? null : null
     if (!item.tipo) pendencias.push('tipo')
-    else if (item.tipo === 'transferencia' ? !perm.transf : !perm.mov) pendencias.push('permissao')
+    else if (!permiteTipo(perm, item.tipo)) pendencias.push('permissao')
     if (!produto) pendencias.push('produto')
     if (!Number.isInteger(item.quantidade) || item.quantidade < 1) pendencias.push('quantidade')
     if (!produto) {
@@ -289,7 +303,7 @@ function analisar(
 
 export default function LancamentoRapido() {
   const [usuarioId, setUsuarioId] = useState<string | null>(null)
-  const [perm, setPerm] = useState({ mov: false, transf: false })
+  const [perm, setPerm] = useState<PermLancamento>({ entrada: false, saida: false, transf: false })
   const [estoque, setEstoque] = useState<ItemEstoque[]>([])
   const [validadesPorProduto, setValidadesPorProduto] = useState<Record<string, Validade[]>>({})
   const [carregando, setCarregando] = useState(true)
@@ -332,7 +346,7 @@ export default function LancamentoRapido() {
           const f = FUNCOES.find((x) => x.id === id)
           return !!f && podeAcessar(f, me?.perfil, permissoes)
         }
-        setPerm({ mov: pode('movimentacao'), transf: pode('transferencia') })
+        setPerm({ entrada: pode('movimentacao'), saida: pode('movimentacao') || pode('saida'), transf: pode('transferencia') })
         if (typeof me?.id === 'string') {
           setUsuarioId(me.id)
           setLista(listaValida(lerStorage(chaveLista(me.id))))
@@ -557,7 +571,7 @@ export default function LancamentoRapido() {
       {aba === 'historico' ? <Historico onTentarDeNovo={tentarDeNovo} /> : (<>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {erroCarga && <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: 0 }}>{erroCarga}</p>}
-        {!perm.mov && !perm.transf && !erroCarga && (
+        {!perm.entrada && !perm.saida && !perm.transf && !erroCarga && (
           <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: 0 }}>Você não tem permissão de Movimentação nem de Transferência.</p>
         )}
 
@@ -742,7 +756,7 @@ export default function LancamentoRapido() {
 function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, onTrocarLugar, onProduto, onValidade, onLotes }: {
   item: ItemLista
   analise: Analise
-  perm: { mov: boolean; transf: boolean }
+  perm: PermLancamento
   catalogo: ProdutoCatalogo[]
   onEditar: () => void
   onRemover: () => void
@@ -858,14 +872,14 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
 }
 
 /** Saída / Entrada / Transf. — o atual fica pintado. Sem permissão: desabilitado e com o motivo. */
-function SeletorTipo({ atual, perm, onEscolher }: { atual: TipoLancamento | null; perm: { mov: boolean; transf: boolean }; onEscolher: (t: TipoLancamento) => void }) {
+function SeletorTipo({ atual, perm, onEscolher }: { atual: TipoLancamento | null; perm: PermLancamento; onEscolher: (t: TipoLancamento) => void }) {
   const tipos: TipoLancamento[] = ['saida', 'entrada', 'transferencia']
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
         {tipos.map((t) => {
           const ativo = atual === t
-          const permitido = t === 'transferencia' ? perm.transf : perm.mov
+          const permitido = permiteTipo(perm, t)
           const cor = TIPO_VIS[t].cor
           return (
             <button key={t} type="button" disabled={!permitido} aria-pressed={ativo} onClick={() => onEscolher(t)}
@@ -875,9 +889,9 @@ function SeletorTipo({ atual, perm, onEscolher }: { atual: TipoLancamento | null
           )
         })}
       </div>
-      {(!perm.mov || !perm.transf) && (
+      {semPermissao(perm) && (
         <p style={{ ...textoPend, margin: '6px 0 0', color: D.muted }}>
-          Sem permissão para {!perm.mov && !perm.transf ? 'nenhum tipo' : !perm.mov ? 'entrada/saída' : 'transferência'} — peça ao admin.
+          Sem permissão para {semPermissao(perm)} — peça ao admin.
         </p>
       )}
     </>
@@ -966,7 +980,7 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
   item: ItemLista
   novo: boolean
   analise: Analise
-  perm: { mov: boolean; transf: boolean }
+  perm: PermLancamento
   catalogo: ProdutoCatalogo[]
   onMudar: (m: Partial<ItemLista>) => void
   onSalvar: () => void
@@ -979,7 +993,7 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
   const principal = produto ? Math.max(0, (produto.qtd_atual ?? 0) - (produto.qtd_cozinha ?? 0)) : 0
   const cozinha = produto?.qtd_cozinha ?? 0
   const podeSalvar = !!item.tipo && !!produto && Number.isInteger(item.quantidade) && item.quantidade >= 1
-    && (item.tipo === 'transferencia' ? perm.transf : perm.mov)
+    && permiteTipo(perm, item.tipo)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

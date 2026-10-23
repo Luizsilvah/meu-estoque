@@ -564,7 +564,6 @@ export default function Conferencia() {
         const unidade = motivoPendente.item.produtos?.unidade ?? ''
         const prodId = motivoPendente.item.produtos?.id ?? ''
         const vals = lotesOrdenados(validadesPorProduto[prodId] ?? [])
-        const semControle = vals.length === 0
 
         let soma = 0
         let alvoContador = alvo
@@ -575,11 +574,11 @@ export default function Conferencia() {
 
         if (aumenta) {
           soma = linhasEntrada.reduce((s, l) => s + parseQtd(l.qtd), 0)
-          const algumaData = linhasEntrada.some((l) => l.data)
-          // Produto sem nenhum lote: validade opcional — sem data em nenhuma
-          // linha, salva só a quantidade. Se preencheu alguma data, valida normal.
-          if (semControle) aviso = 'Produto sem controle de validade — a data é opcional.'
-          if (!(semControle && !algumaData)) {
+          // Só chega aqui produto que controla validade (os outros salvam
+          // direto em registrarMotivo): as unidades novas precisam de data
+          // mesmo que o produto ainda não tenha nenhum lote — a rota recusa
+          // 'entrada' sem lotes.
+          {
             if (linhasEntrada.some((l) => parseQtd(l.qtd) > 0 && !l.data)) motivoBloqueio = 'Informe a data de validade de todos os lotes.'
             else if (linhasEntrada.some((l) => l.data && parseQtd(l.qtd) === 0)) motivoBloqueio = 'Informe a quantidade de todos os lotes.'
             else if (soma < alvo) motivoBloqueio = `Faltam ${alvo - soma} ${unidade} nos lotes.`
@@ -667,7 +666,7 @@ export default function Conferencia() {
                   )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 88px 44px', gap: 8, marginTop: 4 }}>
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>Validade{semControle ? ' (opcional)' : ''}</label>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>Validade</label>
                     <label style={{ ...labelStyle, marginBottom: 0 }}>Qtd</label>
                     <span />
                   </div>

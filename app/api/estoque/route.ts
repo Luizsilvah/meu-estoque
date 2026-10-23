@@ -1,6 +1,7 @@
 // Endpoint GET /api/estoque — retorna todos os itens do estoque com dados do produto e fornecedor
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 import { createSupabaseServer } from '@/app/lib/supabase-server'
+import { temPermissao } from '@/app/lib/exigirPermissao'
 
 export async function GET() {
   const server = await createSupabaseServer()
@@ -17,5 +18,12 @@ export async function GET() {
     .select('id, produto_id, qtd_atual, qtd_base, qtd_max, qtd_cozinha, produtos(id, nome, unidade, fornecedor_id, foto_url, codigo_barras, preco_custo, controla_validade, fornecedores(nome))')
 
   if (error) return Response.json({ erro: error.message }, { status: 500 })
-  return Response.json(data)
+
+  // Preço de custo só para admin; para os outros vem null. (Quem edita produto
+  // sem ser admin não manda o preço — ver PATCH /api/produto.)
+  if (await temPermissao(user.id, 'admin')) return Response.json(data)
+  return Response.json((data ?? []).map((item) => ({
+    ...item,
+    produtos: item.produtos ? { ...item.produtos, preco_custo: null } : item.produtos,
+  })))
 }

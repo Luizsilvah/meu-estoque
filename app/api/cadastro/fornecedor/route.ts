@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from '../../../lib/supabase-admin'
 import { createSupabaseServer } from '../../../lib/supabase-server'
+import { exigirPermissao } from '../../../lib/exigirPermissao'
 
 async function autenticar() {
   const s = await createSupabaseServer()
@@ -31,7 +32,8 @@ export async function GET() {
 }
 
 export async function DELETE(request: Request) {
-  if (!await autenticar()) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(await autenticar(), 'cadastrar')
+  if (negado) return negado
 
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
@@ -44,7 +46,8 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!await autenticar()) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(await autenticar(), 'cadastrar')
+  if (negado) return negado
 
   const body = await request.json().catch(() => null)
   const { id, nome } = body ?? {}
@@ -57,7 +60,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!await autenticar()) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(await autenticar(), ['cadastrar', 'nota'])
+  if (negado) return negado
 
   const body = await request.json().catch(() => null)
   const nome = body?.nome?.trim()

@@ -1,10 +1,13 @@
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
 import { createSupabaseServer } from '../../lib/supabase-server'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 export async function GET(request: Request) {
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, ['relatorio', 'graficos'])
+  if (negado) return negado
   const { searchParams } = new URL(request.url)
   const ano = parseInt(searchParams.get('ano') ?? String(new Date().getFullYear()))
   const mes = parseInt(searchParams.get('mes') ?? String(new Date().getMonth() + 1))

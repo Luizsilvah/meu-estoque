@@ -78,6 +78,13 @@ function EstoqueContent() {
 
   const [editando, setEditando] = useState<ItemEstoque | null>(null)
   const [abaModal, setAbaModal] = useState<AbaModal>('produto')
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((json) => setIsAdmin(json.perfil === 'admin'))
+      .catch(() => {})
+  }, [])
   const [form, setForm] = useState({ nome: '', fornecedor_id: '', unidade: '', qtd_base: '', qtd_max: '', codigo_barras: '', preco_custo: '', qtd_atual: '', controla_validade: true })
   // Desligar "Controla validade" com lotes cadastrados: pede confirmação antes
   const [confirmarDesligarValidade, setConfirmarDesligarValidade] = useState(false)
@@ -119,6 +126,8 @@ function EstoqueContent() {
   const [formNovo, setFormNovo] = useState({ nome: '', fornecedor_id: '', unidade: '', codigo_barras: '', qtd_base: '0', qtd_max: '0', qtd_atual: '0', controla_validade: true })
   const [salvandoNovo, setSalvandoNovo] = useState(false)
   const [feedbackNovo, setFeedbackNovo] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [lotesNovoAberto, setLotesNovoAberto] = useState(false)
+  const [feedbackLotesNovo, setFeedbackLotesNovo] = useState<{ msg: string; ok: boolean } | null>(null)
   const [mostrarNovoFornecedor, setMostrarNovoFornecedor] = useState(false)
   const [novoFornecedorNome, setNovoFornecedorNome] = useState('')
   const [salvandoFornecedor, setSalvandoFornecedor] = useState(false)
@@ -303,7 +312,8 @@ function EstoqueContent() {
           nome: form.nome, fornecedor_id: form.fornecedor_id, unidade: form.unidade,
           qtd_base: Number(form.qtd_base), qtd_max: Number(form.qtd_max),
           codigo_barras: form.codigo_barras.trim() || null,
-          preco_custo: form.preco_custo !== '' ? Number(form.preco_custo) : null,
+          // Quem não é admin não vê o preço: não manda (a rota também ignora)
+          preco_custo: !isAdmin ? undefined : form.preco_custo !== '' ? Number(form.preco_custo) : null,
           controla_validade: form.controla_validade,
         }),
       })
@@ -571,10 +581,20 @@ function EstoqueContent() {
     } finally { setSalvandoFornecedor(false) }
   }
 
-  // Cadastra novo produto no banco e recarrega a lista do estoque
-  async function criarNovoProduto() {
+  // Cadastra novo produto no banco e recarrega a lista do estoque. Quantidade
+  // inicial em produto que controla validade: pede os lotes antes (a rota
+  // recusa sem eles).
+  const qtdInicialNovo = Math.max(0, Math.floor(Number(formNovo.qtd_atual) || 0))
+  function criarNovoProduto() {
     if (!formNovo.nome.trim() || !formNovo.fornecedor_id || !formNovo.unidade.trim()) return
-    setSalvandoNovo(true); setFeedbackNovo(null)
+    setFeedbackNovo(null); setFeedbackLotesNovo(null)
+    if (formNovo.controla_validade && qtdInicialNovo > 0) { setLotesNovoAberto(true); return }
+    void enviarNovoProduto([])
+  }
+
+  async function enviarNovoProduto(lotes: LoteAdd[]) {
+    const setMsg = lotesNovoAberto ? setFeedbackLotesNovo : setFeedbackNovo
+    setSalvandoNovo(true); setMsg(null)
     try {
       const res = await fetch('/api/cadastro/produto', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -582,12 +602,14 @@ function EstoqueContent() {
           nome: formNovo.nome.trim(), fornecedor_id: formNovo.fornecedor_id,
           unidade: formNovo.unidade.trim(), codigo_barras: formNovo.codigo_barras.trim() || null,
           qtd_base: Number(formNovo.qtd_base) || 0, qtd_max: Number(formNovo.qtd_max) || 0,
-          qtd_atual: Number(formNovo.qtd_atual) || 0,
+          qtd_atual: qtdInicialNovo,
           controla_validade: formNovo.controla_validade,
+          lotes,
         }),
       })
       const json = await res.json()
-      if (!res.ok || json.erro) { setFeedbackNovo({ msg: json.erro ?? 'Erro ao cadastrar', ok: false }); return }
+      if (!res.ok || json.erro) { setMsg({ msg: json.erro ?? 'Erro ao cadastrar', ok: false }); return }
+      setLotesNovoAberto(false)
       invalidarEstoqueCache()
       // forcar=true: o produto acabou de ser criado, precisa da linha nova agora,
       // não do cache de até 30s (que ainda nem sabe que ela existe)
@@ -596,7 +618,7 @@ function EstoqueContent() {
       setFeedbackNovo({ msg: 'Produto cadastrado!', ok: true })
       setTimeout(() => { setModalNovoProduto(false); setFeedbackNovo(null) }, 800)
     } catch {
-      setFeedbackNovo({ msg: 'Erro de conexão', ok: false })
+      setMsg({ msg: 'Erro de conexão', ok: false })
     } finally { setSalvandoNovo(false) }
   }
 
@@ -872,10 +894,13 @@ function EstoqueContent() {
                   </div>
                 </div>
 
-                <div><label style={labelStyle}>Preço de custo (R$)</label>
-                  <input type="number" min="0" step="0.01" style={inputStyle} placeholder="0,00"
-                    value={form.preco_custo} onChange={(e) => setForm((f) => ({ ...f, preco_custo: e.target.value }))} />
-                </div>
+                {/* Preço de custo só para admin (GET /api/estoque manda null para os outros) */}
+                {isAdmin && (
+                  <div><label style={labelStyle}>Preço de custo (R$)</label>
+                    <input type="number" min="0" step="0.01" style={inputStyle} placeholder="0,00"
+                      value={form.preco_custo} onChange={(e) => setForm((f) => ({ ...f, preco_custo: e.target.value }))} />
+                  </div>
+                )}
 
                 {/* Controla validade — desligar com lotes pede confirmação; os lotes são apagados ao salvar */}
                 <Toggle
@@ -1219,6 +1244,24 @@ function EstoqueContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Validade da quantidade inicial do produto novo (fica por cima do modal de cadastro) */}
+      {modalNovoProduto && lotesNovoAberto && (
+        <ModalLotes
+          key={qtdInicialNovo}
+          produtoNome={formNovo.nome.trim() || 'Produto novo'}
+          unidade={formNovo.unidade.trim() || 'un'}
+          delta={qtdInicialNovo}
+          validades={[]}
+          titulo="Validade da quantidade inicial"
+          textoConfirmar="Cadastrar produto"
+          salvando={salvandoNovo}
+          feedback={feedbackLotesNovo}
+          onVoltar={() => { setLotesNovoAberto(false); setFeedbackLotesNovo(null) }}
+          onConfirmar={(lotesAdd) => { void enviarNovoProduto(lotesAdd) }}
+          exigirData
+        />
       )}
     </Page>
   )

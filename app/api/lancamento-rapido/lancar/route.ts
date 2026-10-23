@@ -96,7 +96,9 @@ export async function POST(request: Request) {
     const f = FUNCOES.find((x) => x.id === id)
     return !!f && podeAcessar(f, perfil?.perfil, perfil?.permissoes)
   }
-  const podeMov = pode('movimentacao')
+  // Mesma regra de /api/movimentacao: saída também com "Dar saída"
+  const podeEntrada = pode('movimentacao')
+  const podeSaida = podeEntrada || pode('saida')
   const podeTransf = pode('transferencia')
 
   const resultados: Resultado[] = []
@@ -124,8 +126,8 @@ export async function POST(request: Request) {
     } else {
       log.local = item.local === 'cozinha' ? 'cozinha' : 'principal'
     }
-    if (tipo === 'transferencia' ? !podeTransf : !podeMov) {
-      falhar(`Sem permissão para ${tipo === 'transferencia' ? 'transferência' : 'movimentação'}`); continue
+    if (!(tipo === 'transferencia' ? podeTransf : tipo === 'saida' ? podeSaida : podeEntrada)) {
+      falhar(`Sem permissão para ${tipo === 'transferencia' ? 'transferência' : tipo === 'saida' ? 'saída' : 'entrada'}`); continue
     }
     const produtoId = item.produto_id
     if (typeof produtoId !== 'string' || !UUID.test(produtoId)) { falhar('Produto inválido'); continue }

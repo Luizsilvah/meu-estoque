@@ -8,9 +8,9 @@
 //               somam menos que o delta, tira tudo dos lotes e o resto sai sem lote.
 // Só monta a lista; quem chama grava (movimentacao_registrar / conferencia_ajustar).
 // exigirData (data obrigatória mesmo sem lotes): toda entrada da Movimentação,
-// do Scanner, do Lançamento rápido e o aumento no "Editar produto". Só a
-// Conferência deixa a data opcional. lotesIniciais* (Lançamento rápido) abre
-// com o que o item já tem.
+// do Scanner, do Lançamento rápido, o aumento no "Editar produto" e a
+// quantidade inicial do cadastro de produto (a Conferência, com modal próprio,
+// também exige). lotesIniciais* (Lançamento rápido) abre com o que o item já tem.
 // Use `key` no componente para recomeçar o estado a cada abertura.
 import { useState } from 'react'
 

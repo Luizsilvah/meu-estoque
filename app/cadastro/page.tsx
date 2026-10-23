@@ -7,6 +7,7 @@ import Page from '../components/ui/Page'
 import PageHeader from '../components/ui/PageHeader'
 import Card from '../components/ui/Card'
 import Icon from '../components/ui/Icon'
+import ModalLotes, { type LoteAdd } from '../components/ModalLotes'
 
 import { D } from '@/app/lib/theme'
 import { invalidarEstoqueCache } from '@/app/lib/estoqueCache'
@@ -52,6 +53,8 @@ export default function Cadastro() {
   const [controlaValidade, setControlaValidade] = useState(true)
   const [salvandoProduto, setSalvandoProduto] = useState(false)
   const [feedbackProduto, setFeedbackProduto] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [pedindoLotes, setPedindoLotes] = useState(false)
+  const [feedbackLotes, setFeedbackLotes] = useState<{ msg: string; ok: boolean } | null>(null)
 
   useEffect(() => {
     fetch('/api/cadastro/fornecedor')
@@ -60,30 +63,42 @@ export default function Cadastro() {
       .finally(() => setLoadingForn(false))
   }, [])
 
-  async function salvarProduto(e: React.FormEvent) {
+  // Quantidade inicial em produto que controla validade: pede os lotes antes
+  // de gravar (a rota recusa sem eles).
+  const qtdInicial = Math.max(0, Math.floor(Number(qtdAtual) || 0))
+  function salvarProduto(e: React.FormEvent) {
     e.preventDefault()
+    setFeedbackProduto(null); setFeedbackLotes(null)
+    if (controlaValidade && qtdInicial > 0) { setPedindoLotes(true); return }
+    void enviarProduto([])
+  }
+
+  async function enviarProduto(lotes: LoteAdd[]) {
+    const setMsg = pedindoLotes ? setFeedbackLotes : setFeedbackProduto
     setSalvandoProduto(true)
-    setFeedbackProduto(null)
+    setMsg(null)
     try {
       const res = await fetch('/api/cadastro/produto', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nome: nomeProduto, fornecedor_id: fornecedorId, unidade,
-          qtd_atual: Number(qtdAtual) || 0, qtd_base: Number(qtdBase) || 0, qtd_max: Number(qtdMax) || 0,
+          qtd_atual: qtdInicial, qtd_base: Number(qtdBase) || 0, qtd_max: Number(qtdMax) || 0,
           codigo_barras: codigoBarras.trim() || null,
           preco_custo: precoCusto !== '' ? Number(precoCusto) : null,
           controla_validade: controlaValidade,
+          lotes,
         }),
       })
       const json = await res.json()
-      if (!res.ok || json.erro) { setFeedbackProduto({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
+      if (!res.ok || json.erro) { setMsg({ msg: json.erro ?? 'Erro ao salvar', ok: false }); return }
       invalidarEstoqueCache()
+      setPedindoLotes(false)
       setFeedbackProduto({ msg: `Produto "${json.nome}" cadastrado!`, ok: true })
       setNomeProduto(''); setFornecedorId(''); setUnidade('')
       setQtdAtual(''); setQtdBase(''); setQtdMax(''); setCodigoBarras(''); setPrecoCusto(''); setControlaValidade(true)
     } catch {
-      setFeedbackProduto({ msg: 'Erro de conexão', ok: false })
+      setMsg({ msg: 'Erro de conexão', ok: false })
     } finally {
       setSalvandoProduto(false)
     }
@@ -355,6 +370,23 @@ export default function Cadastro() {
           </>
         )}
       </div>
+
+      {pedindoLotes && (
+        <ModalLotes
+          key={qtdInicial}
+          produtoNome={nomeProduto || 'Produto novo'}
+          unidade={unidade || 'un'}
+          delta={qtdInicial}
+          validades={[]}
+          titulo="Validade da quantidade inicial"
+          textoConfirmar="Cadastrar produto"
+          salvando={salvandoProduto}
+          feedback={feedbackLotes}
+          onVoltar={() => { setPedindoLotes(false); setFeedbackLotes(null) }}
+          onConfirmar={(lotesAdd) => void enviarProduto(lotesAdd)}
+          exigirData
+        />
+      )}
     </Page>
   )
 }

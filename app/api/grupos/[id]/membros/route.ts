@@ -1,5 +1,6 @@
 import { createSupabaseServer } from '../../../../lib/supabase-server'
 import { createSupabaseAdmin } from '../../../../lib/supabase-admin'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 // GET /api/grupos/[id]/membros — lista membros do grupo
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -7,6 +8,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, 'admin')
+  if (negado) return negado
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('grupo_membros')
@@ -23,6 +26,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, 'admin')
+  if (negado) return negado
 
   const body = await request.json().catch(() => null)
   const usuario_id = body?.usuario_id
@@ -43,6 +48,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, 'admin')
+  if (negado) return negado
 
   const { searchParams } = new URL(request.url)
   const usuario_id = searchParams.get('usuario_id')

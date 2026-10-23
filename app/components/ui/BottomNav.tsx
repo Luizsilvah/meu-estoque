@@ -23,9 +23,11 @@ const ROTAS_SEM_BARRA = ['/login', '/reset-senha']
 //                    (usado no padding-bottom do body, em globals.css)
 //   --bottomnav-topo onde barras fixas da página devem ficar (bottom), acima da barra e do botão
 //   --bottomnav-safe a safe area já fica por conta da barra: barras fixas acima dela não somam de novo
+//   --bottomnav-base só a barra + safe area, sem o botão central (tela que encosta na barra, ex.: chat)
 const VARIAVEIS_BARRA = `:root{` +
   `--bottomnav-h:calc(var(--bottomnav-barra) + var(--bottomnav-bump) + env(safe-area-inset-bottom) + 16px);` +
   `--bottomnav-topo:calc(var(--bottomnav-barra) + var(--bottomnav-bump) + env(safe-area-inset-bottom));` +
+  `--bottomnav-base:calc(var(--bottomnav-barra) + env(safe-area-inset-bottom));` +
   `--bottomnav-safe:0px}`
 const EVENTO_ABRIR_MENU = 'fluxio:abrir-menu'
 
@@ -319,6 +321,16 @@ export default function BottomNav() {
                     Saída
                   </button>
                 </div>
+              )}
+              {/* Só "Dar saída" (sem Movimentação): a saída vai pela tela /saida */}
+              {!vis['movimentacao'] && vis['saida'] && (
+                <button
+                  onClick={() => { setScannerProduto(null); router.push(`/saida?produto=${encodeURIComponent(scannerProduto.nome)}&tipo=saida`) }}
+                  style={{ ...botaoScan, background: COR.vermelho }}
+                >
+                  <Icon nome="minus" size={22} cor="#fff" traco={2.6} />
+                  Dar saída
+                </button>
               )}
               {vis['transferencia'] && (
                 <button

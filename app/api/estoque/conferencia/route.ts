@@ -7,6 +7,7 @@
 // validade — ver supabase/migrations/20261003120000_conferencia_ajustar.sql.
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 import { createSupabaseServer } from '@/app/lib/supabase-server'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 const TIPOS_VALIDOS = new Set(['entrada', 'saida_uso', 'descarte_vencido', 'correcao'])
 
@@ -17,6 +18,8 @@ export async function PATCH(request: Request) {
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, ['conferencia', 'estoque'])
+  if (negado) return negado
 
   const body = await request.json().catch(() => null)
   const { produto_id, nova_qtd_atual, nova_qtd_cozinha, tipo, lotes_add, lotes_remover } = body ?? {}
@@ -29,6 +32,24 @@ export async function PATCH(request: Request) {
   }
 
   const admin = createSupabaseAdmin()
+
+  // Validade obrigatória no aumento — entrada ou correção pra cima (mesma
+  // regra/mensagens de /api/movimentacao): produto que controla validade tem
+  // que trazer lotes somando as unidades novas, mesmo sem nenhum lote
+  // cadastrado. Estoque e opção lidos do banco.
+  if (tipo === 'entrada' || tipo === 'correcao') {
+    const [{ data: prod, error: erroProd }, { data: est, error: erroEst }] = await Promise.all([
+      admin.from('produtos').select('controla_validade').eq('id', produto_id).maybeSingle(),
+      admin.from('estoque').select('qtd_atual').eq('produto_id', produto_id).maybeSingle(),
+    ])
+    if (erroProd || erroEst) return Response.json({ erro: 'Erro ao ler o produto' }, { status: 500 })
+    if (prod?.controla_validade ?? true) {
+      const novas = Math.floor(Math.max(0, Number(nova_qtd_atual) || 0)) - Math.floor(Number(est?.qtd_atual) || 0)
+      const somaLotes = (Array.isArray(lotes_add) ? (lotes_add as LoteAdd[]) : []).reduce((s, l) => s + (Number(l?.quantidade) || 0), 0)
+      if (novas > 0 && somaLotes === 0) return Response.json({ erro: `Informe a validade das ${novas} unidades` }, { status: 400 })
+      if (novas > 0 && somaLotes !== novas) return Response.json({ erro: `Os lotes somam ${somaLotes} mas ${tipo === 'entrada' ? 'a entrada' : 'o aumento'} é de ${novas}` }, { status: 400 })
+    }
+  }
 
   // Nome amigável para o histórico — mesmo padrão de /api/movimentacao e /api/nota/lancar
   const { data: perfil } = await admin.from('perfis').select('nome').eq('id', user.id).single()

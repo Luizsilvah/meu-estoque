@@ -1,11 +1,14 @@
 import webpush from 'web-push'
 import { createSupabaseServer } from '../../../lib/supabase-server'
 import { createSupabaseAdmin } from '../../../lib/supabase-admin'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 export async function POST(req: Request) {
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, 'admin')
+  if (negado) return negado
   webpush.setVapidDetails(
     process.env.VAPID_CONTACT!,
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,

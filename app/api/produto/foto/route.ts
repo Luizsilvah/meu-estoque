@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 import { createSupabaseServer } from '@/app/lib/supabase-server'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 const BUCKET = 'produtos'
 
@@ -7,6 +8,8 @@ export async function POST(request: Request) {
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, 'estoque')
+  if (negado) return negado
   let formData: FormData
   try { formData = await request.formData() } catch {
     return Response.json({ erro: 'FormData inválido' }, { status: 400 })

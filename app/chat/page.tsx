@@ -311,8 +311,12 @@ export default function Chat() {
 
   const membroIds = new Set(membros.map((m) => m.usuario_id))
 
+  // Encosta na barra de baixo (--bottomnav-base), sem a faixa do fundo que o
+  // padding-bottom do body (--bottomnav-h, com a folga) deixaria entre o campo
+  // de mensagem e a barra: a margem negativa desconta essa diferença. Com o
+  // teclado aberto as variáveis somem e tudo vira 0.
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - var(--bottomnav-h, 0px))', overflow: 'hidden', background: D.bg, width: '100%', maxWidth: 480, margin: '0 auto', borderLeft: `1px solid ${D.border}`, borderRight: `1px solid ${D.border}`, boxSizing: 'border-box' }}>
+    <div style={{ display: 'flex', height: 'calc(100vh - var(--bottomnav-base, 0px))', overflow: 'hidden', background: D.bg, width: '100%', maxWidth: 480, margin: '0 auto calc(var(--bottomnav-base, 0px) - var(--bottomnav-h, 0px))', borderLeft: `1px solid ${D.border}`, borderRight: `1px solid ${D.border}`, boxSizing: 'border-box' }}>
 
       {/* Sidebar */}
       <div style={{
@@ -487,8 +491,8 @@ export default function Chat() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div style={{ flexShrink: 0, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-end', background: D.card, borderTop: `1px solid ${D.border}` }}>
+        {/* Input — embaixo, espaço do botão central do scanner, que sobe acima da barra */}
+        <div style={{ flexShrink: 0, padding: '10px 12px calc(10px + var(--bottomnav-topo, 0px) - var(--bottomnav-base, 0px))', display: 'flex', gap: 8, alignItems: 'flex-end', background: D.card, borderTop: `1px solid ${D.border}` }}>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleArquivo} />
           <button onClick={() => fileInputRef.current?.click()} disabled={uploadando} aria-label="Enviar imagem"
             style={{ flexShrink: 0, width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: D.input, border: `1px solid ${D.border}`, color: D.text2, cursor: 'pointer', opacity: uploadando ? 0.4 : 1 }}>

@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
 import { createSupabaseServer } from '../../lib/supabase-server'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 export type ItemPrevisao = {
   produto_id: string
@@ -17,6 +18,8 @@ export async function GET() {
   const server = await createSupabaseServer()
   const { data: { user } } = await server.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, ['relatorio', 'graficos'])
+  if (negado) return negado
 
   const admin = createSupabaseAdmin()
 

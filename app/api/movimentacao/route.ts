@@ -6,6 +6,7 @@
 // falha no meio deixava qtd_atual diferente da soma dos lotes.
 import { createSupabaseServer } from '@/app/lib/supabase-server'
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
+import { exigirPermissao } from '@/app/lib/exigirPermissao'
 
 type ResultadoMovimentacao = { qtd_atual: number; qtd_cozinha: number; qtd_base: number | null }
 type LoteAdd = { data_validade: string; quantidade: number }
@@ -40,6 +41,8 @@ export async function POST(request: Request) {
   const serverClient = await createSupabaseServer()
   const { data: { user } } = await serverClient.auth.getUser()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  const negado = await exigirPermissao(user, tipo === 'entrada' ? 'movimentacao' : ['movimentacao', 'saida'])
+  if (negado) return negado
 
   const supabase = createSupabaseAdmin()
 

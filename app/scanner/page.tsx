@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { D } from '@/app/lib/theme'
 import BarcodeCameraButton from '@/app/components/BarcodeCameraButton'
@@ -10,6 +10,7 @@ import Icon from '@/app/components/ui/Icon'
 import { invalidarEstoqueCache } from '@/app/lib/estoqueCache'
 import ModalLotes, { type LoteAdd, type LoteRemover } from '@/app/components/ModalLotes'
 import { controlaValidade, type Validade } from '@/app/lib/validades'
+import { FUNCOES, podeAcessar } from '@/app/lib/permissoes'
 
 type Produto = {
   produto_id: string
@@ -42,6 +43,22 @@ export default function Scanner() {
   const [salvando, setSalvando] = useState(false)
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null)
   const [modalLotes, setModalLotes] = useState<ModalLotesMov>(null)
+  // Mesma regra de POST /api/movimentacao: entrada = Movimentação; saída =
+  // Movimentação ou Dar saída. null = ainda carregando (nenhum botão).
+  const [pode, setPode] = useState<{ entrada: boolean; saida: boolean } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((json) => {
+        const tem = (id: string) => {
+          const f = FUNCOES.find((x) => x.id === id)
+          return !!f && podeAcessar(f, json.perfil, json.permissoes)
+        }
+        setPode({ entrada: tem('movimentacao'), saida: tem('movimentacao') || tem('saida') })
+      })
+      .catch(() => setPode({ entrada: false, saida: false }))
+  }, [])
 
   async function onScanned(codigo: string) {
     setBuscando(true)
@@ -261,14 +278,25 @@ export default function Scanner() {
               </div>
             </Card>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button onClick={() => abrirModal('saida')} style={{ ...botaoGrande, background: 'rgba(239,68,68,0.15)', color: SAIDA }}>
-                <Icon nome="minus" size={20} traco={2.6} /> Saída
-              </button>
-              <button onClick={() => abrirModal('entrada')} style={{ ...botaoGrande, background: 'rgba(16,185,129,0.15)', color: ENTRADA }}>
-                <Icon nome="plus" size={20} traco={2.6} /> Entrada
-              </button>
-            </div>
+            {pode && (pode.saida || pode.entrada) && (
+              <div style={{ display: 'grid', gridTemplateColumns: pode.saida && pode.entrada ? '1fr 1fr' : '1fr', gap: 10 }}>
+                {pode.saida && (
+                  <button onClick={() => abrirModal('saida')} style={{ ...botaoGrande, background: 'rgba(239,68,68,0.15)', color: SAIDA }}>
+                    <Icon nome="minus" size={20} traco={2.6} /> Saída
+                  </button>
+                )}
+                {pode.entrada && (
+                  <button onClick={() => abrirModal('entrada')} style={{ ...botaoGrande, background: 'rgba(16,185,129,0.15)', color: ENTRADA }}>
+                    <Icon nome="plus" size={20} traco={2.6} /> Entrada
+                  </button>
+                )}
+              </div>
+            )}
+            {pode && !pode.saida && !pode.entrada && (
+              <p style={{ color: D.text2, fontSize: 13, textAlign: 'center', margin: 0 }}>
+                Você pode consultar o produto, mas não tem permissão para dar entrada ou saída.
+              </p>
+            )}
 
             <button onClick={reiniciar}
               style={{ ...botaoGrande, background: D.card, color: D.text2, border: `1px solid ${D.border}` }}>
