@@ -129,6 +129,18 @@ function itemVazio(): ItemLista {
   }
 }
 
+/**
+ * Troca de tipo (card e editor). Saindo da transferência, o lugar vira a
+ * origem dela (de onde o produto ia sair); entrando, a direção sai do lugar
+ * atual. Lotes escolhidos à mão da saída deixam de valer.
+ */
+function mudancaTipo(item: ItemLista, tipo: TipoLancamento): Partial<ItemLista> {
+  const m: Partial<ItemLista> = { tipo, duvida_tipo: null, lotes_remover: null }
+  if (item.tipo === 'transferencia' && tipo !== 'transferencia') m.local = item.destino === 'cozinha' ? 'principal' : 'cozinha'
+  if (tipo === 'transferencia' && item.tipo !== 'transferencia') m.destino = item.local === 'cozinha' ? 'principal' : 'cozinha'
+  return m
+}
+
 /** Confere o que veio do localStorage — formato antigo/quebrado vira lista vazia. */
 function listaValida(v: unknown): ItemLista[] {
   if (!Array.isArray(v)) return []
@@ -383,7 +395,9 @@ export default function LancamentoRapido() {
       quantidade: r.quantidade,
       local: r.local,
       destino: r.destino ?? 'cozinha',
-      lotes_add: r.tipo === 'saida' || r.tipo === 'transferencia' ? [] : r.lotes,
+      // Guardadas mesmo fora da entrada: se o tipo for trocado para Entrada, as datas do texto voltam.
+      // (Só a entrada usa/envia lotes_add.)
+      lotes_add: r.lotes,
       duvida_tipo: r.duvida_tipo,
       texto_fonte: t,
     }))
@@ -514,7 +528,7 @@ export default function LancamentoRapido() {
       produto_id: ainda ? log.produto_id : null,
       candidatos: !ainda && log.nome ? resultadosBusca(log.nome, catalogo) : [],
       quantidade: log.quantidade ?? 1,
-      local: log.tipo === 'transferencia' ? 'principal' : log.local ?? 'principal',
+      local: log.tipo === 'transferencia' ? (log.destino === 'principal' ? 'cozinha' : 'principal') : log.local ?? 'principal',
       destino: log.destino ?? 'cozinha',
       lotes_add: log.tipo === 'entrada' ? log.lotes.map((l) => ({ ...l })) : [],
     }
@@ -586,9 +600,9 @@ export default function LancamentoRapido() {
           <CardItem key={item.key} item={item} analise={analises[idx]} perm={perm} catalogo={catalogo}
             onEditar={() => abrirEditor(item)}
             onRemover={() => remover(item.key)}
-            onTipo={(tipo) => atualizar(item.key, { tipo, lotes_remover: null, duvida_tipo: null })}
+            onTipo={(tipo) => atualizar(item.key, mudancaTipo(item, tipo))}
             onTrocarLugar={() => atualizar(item.key, item.tipo === 'transferencia'
-              ? { destino: item.destino === 'cozinha' ? 'principal' : 'cozinha' }
+              ? { destino: item.destino === 'cozinha' ? 'principal' : 'cozinha', local: item.destino }
               : { local: item.local === 'cozinha' ? 'principal' : 'cozinha', lotes_remover: null })}
             onProduto={(pid) => escolherProduto(item, pid)}
             onValidade={(data) => atualizar(item.key, { lotes_add: data ? [{ data_validade: data, quantidade: item.quantidade }] : [] })}
@@ -740,6 +754,9 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
   onLotes: () => void
 }) {
   const pend = analise.pendencias
+  // Tocar no selo do tipo (SAÍDA/ENTRADA/TRANSF.) abre a troca de tipo direto no card.
+  const [trocandoTipo, setTrocandoTipo] = useState(false)
+  const mostrarTipos = pend.includes('tipo') || (trocandoTipo && !!item.tipo)
   // Aviso (ex.: saída maior que o lugar tem) pinta de amarelo mas não bloqueia o "Lançar tudo".
   const amarelo = pend.length > 0 || !!analise.aviso
   const vis = item.tipo ? TIPO_VIS[item.tipo] : null
@@ -761,9 +778,16 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
     <Card style={{ background: fundo, borderColor: borda, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       {/* Linha 1: selo, produto, quantidade */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', padding: '3px 7px', borderRadius: 7, color: selo.cor, background: `color-mix(in srgb, ${selo.cor} 16%, transparent)` }}>
-          {selo.texto}
-        </span>
+        {item.tipo ? (
+          <button type="button" onClick={() => setTrocandoTipo((v) => !v)} aria-expanded={trocandoTipo} aria-label={`${selo.texto} — tocar para trocar o tipo`}
+            style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', padding: '3px 5px 3px 7px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit', color: selo.cor, background: `color-mix(in srgb, ${selo.cor} 16%, transparent)` }}>
+            {selo.texto}<span aria-hidden style={{ fontSize: 9 }}>{trocandoTipo ? '▴' : '▾'}</span>
+          </button>
+        ) : (
+          <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', padding: '3px 7px', borderRadius: 7, color: selo.cor, background: `color-mix(in srgb, ${selo.cor} 16%, transparent)` }}>
+            {selo.texto}
+          </span>
+        )}
         <span style={{ flex: 1, minWidth: 0, color: D.text, fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {nome ?? `“${item.termo || item.texto_original || 'produto'}”`}
         </span>
@@ -773,20 +797,10 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
       </div>
 
       {/* Pendências */}
-      {pend.includes('tipo') && (
+      {mostrarTipos && (
         <div>
-          <p style={textoPend}>{item.duvida_tipo ?? 'É entrada, saída ou transferência?'}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
-            {(['saida', 'entrada', 'transferencia'] as TipoLancamento[]).map((t) => {
-              const permitido = t === 'transferencia' ? perm.transf : perm.mov
-              return (
-                <button key={t} type="button" disabled={!permitido} onClick={() => onTipo(t)}
-                  style={{ ...botaoEscolha, color: TIPO_VIS[t].cor, borderColor: `color-mix(in srgb, ${TIPO_VIS[t].cor} 45%, transparent)`, opacity: permitido ? 1 : 0.35 }}>
-                  {TIPO_VIS[t].nome}
-                </button>
-              )
-            })}
-          </div>
+          <p style={textoPend}>{pend.includes('tipo') ? item.duvida_tipo ?? 'É entrada, saída ou transferência?' : 'Trocar o tipo:'}</p>
+          <SeletorTipo atual={item.tipo} perm={perm} onEscolher={(t) => { onTipo(t); setTrocandoTipo(false) }} />
         </div>
       )}
       {pend.includes('permissao') && (
@@ -840,6 +854,33 @@ function CardItem({ item, analise, perm, catalogo, onEditar, onRemover, onTipo, 
       {analise.aviso && <p style={{ margin: 0, color: AMARELO, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {analise.aviso}</p>}
       {item.erro && <p style={{ margin: 0, color: '#EF4444', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'flex-start', gap: 6 }}><Icon nome="alert" size={15} /> {item.erro}</p>}
     </Card>
+  )
+}
+
+/** Saída / Entrada / Transf. — o atual fica pintado. Sem permissão: desabilitado e com o motivo. */
+function SeletorTipo({ atual, perm, onEscolher }: { atual: TipoLancamento | null; perm: { mov: boolean; transf: boolean }; onEscolher: (t: TipoLancamento) => void }) {
+  const tipos: TipoLancamento[] = ['saida', 'entrada', 'transferencia']
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+        {tipos.map((t) => {
+          const ativo = atual === t
+          const permitido = t === 'transferencia' ? perm.transf : perm.mov
+          const cor = TIPO_VIS[t].cor
+          return (
+            <button key={t} type="button" disabled={!permitido} aria-pressed={ativo} onClick={() => onEscolher(t)}
+              style={{ ...botaoEscolha, color: ativo ? '#fff' : cor, background: ativo ? cor : 'transparent', borderColor: ativo ? cor : `color-mix(in srgb, ${cor} 45%, transparent)`, opacity: permitido ? 1 : 0.35, cursor: permitido ? 'pointer' : 'not-allowed' }}>
+              {TIPO_VIS[t].nome}
+            </button>
+          )
+        })}
+      </div>
+      {(!perm.mov || !perm.transf) && (
+        <p style={{ ...textoPend, margin: '6px 0 0', color: D.muted }}>
+          Sem permissão para {!perm.mov && !perm.transf ? 'nenhum tipo' : !perm.mov ? 'entrada/saída' : 'transferência'} — peça ao admin.
+        </p>
+      )}
+    </>
   )
 }
 
@@ -947,20 +988,7 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
 
       <div>
         <label style={rotulo}>Tipo</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
-          {(['saida', 'entrada', 'transferencia'] as TipoLancamento[]).map((t) => {
-            const ativo = item.tipo === t
-            const permitido = t === 'transferencia' ? perm.transf : perm.mov
-            const cor = TIPO_VIS[t].cor
-            return (
-              <button key={t} type="button" disabled={!permitido}
-                onClick={() => onMudar({ tipo: t, duvida_tipo: null })}
-                style={{ ...botaoEscolha, color: ativo ? '#fff' : cor, background: ativo ? cor : 'transparent', borderColor: ativo ? cor : `color-mix(in srgb, ${cor} 45%, transparent)`, opacity: permitido ? 1 : 0.35 }}>
-                {TIPO_VIS[t].nome}
-              </button>
-            )
-          })}
-        </div>
+        <SeletorTipo atual={item.tipo} perm={perm} onEscolher={(t) => onMudar(mudancaTipo(item, t))} />
       </div>
 
       <div>
@@ -1007,7 +1035,7 @@ function EditorItem({ item, novo, analise, perm, catalogo, onMudar, onSalvar, on
       {item.tipo === 'transferencia' && (
         <div>
           <label style={rotulo}>Direção</label>
-          <Segmento opcoes={[['cozinha', 'Principal → Cozinha'], ['principal', 'Cozinha → Principal']]} valor={item.destino} onMudar={(v) => onMudar({ destino: v as Local })} />
+          <Segmento opcoes={[['cozinha', 'Principal → Cozinha'], ['principal', 'Cozinha → Principal']]} valor={item.destino} onMudar={(v) => onMudar({ destino: v as Local, local: v === 'cozinha' ? 'principal' : 'cozinha' })} />
         </div>
       )}
 

@@ -9,6 +9,7 @@ import SearchBar from '../components/ui/SearchBar'
 import Chips, { type Chip } from '../components/ui/Chips'
 import Card, { CARD_THUMB } from '../components/ui/Card'
 import Icon from '../components/ui/Icon'
+import CampoQuantidade from '../components/ui/CampoQuantidade'
 import Toggle from '../components/ui/Toggle'
 
 import { D } from '@/app/lib/theme'
@@ -49,6 +50,12 @@ const inputStyle: React.CSSProperties = {
   padding: '10px 14px', fontSize: 14, color: D.text, outline: 'none', boxSizing: 'border-box',
 }
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: D.text2, marginBottom: 4, marginLeft: 2 }
+
+// Transferência: quanto tem na origem e se a quantidade digitada pode ir (inteiro de 1 ao disponível).
+const dispPrincipal = (i: { qtd_atual: number; qtd_cozinha: number | null }) => Math.max(0, i.qtd_atual - (i.qtd_cozinha ?? 0))
+const dispOrigem = (i: { qtd_atual: number; qtd_cozinha: number | null }, direcao: 'cozinha' | 'principal') =>
+  direcao === 'cozinha' ? dispPrincipal(i) : i.qtd_cozinha ?? 0
+const qtdValida = (texto: string, disponivel: number) => /^\d+$/.test(texto) && Number(texto) >= 1 && Number(texto) <= disponivel
 
 export default function Estoque() {
   return <Suspense><EstoqueContent /></Suspense>
@@ -203,7 +210,7 @@ function EstoqueContent() {
       controla_validade: controlaValidade(item.produtos),
     })
     setFeedback(null); setConfirmarApagar(false); setSenhaApagar(''); setConfirmarDesligarValidade(false)
-    setQtdTransferirModal(''); setFeedbackTransferirModal(null)
+    setQtdTransferirModal('1'); setFeedbackTransferirModal(null)
     if (item.produtos?.id) {
       setLoadingVal(true); setValidades([]); setNovaData(''); setNovaQtd('1'); setEditandoValidade(null)
       try {
@@ -220,7 +227,7 @@ function EstoqueContent() {
   // Fecha o modal e limpa todos os estados de edição
   function fecharModal() {
     setEditando(null); setFeedback(null); setConfirmarApagar(false); setSenhaApagar(''); setAbaModal('produto')
-    setQtdTransferirModal(''); setDirecaoTransferir('cozinha'); setFeedbackTransferirModal(null); setEditandoValidade(null)
+    setQtdTransferirModal('1'); setDirecaoTransferir('cozinha'); setFeedbackTransferirModal(null); setEditandoValidade(null)
   }
 
   // Remove produto do estoque e da tabela de produtos (requer senha '2010')
@@ -489,7 +496,7 @@ function EstoqueContent() {
 
   // Executa transferência para a cozinha a partir do modal standalone (botão no card da lista)
   async function confirmarTransferir() {
-    if (!modalTransferir || !qtdTransferir || Number(qtdTransferir) <= 0) return
+    if (!modalTransferir || transferindo || !qtdValida(qtdTransferir, dispPrincipal(modalTransferir))) return
     setTransferindo(true); setFeedbackTransferir(null)
     try {
       const res = await fetch('/api/estoque/transferir', {
@@ -511,7 +518,7 @@ function EstoqueContent() {
 
   // Executa transferência bidirecional (cozinha ↔ principal) dentro do modal de edição
   async function transferirDentroModal() {
-    if (!editando || !qtdTransferirModal || Number(qtdTransferirModal) <= 0) return
+    if (!editando || transferindoModal || !qtdValida(qtdTransferirModal, dispOrigem(editando, direcaoTransferir))) return
     setTransferindoModal(true); setFeedbackTransferirModal(null)
     try {
       const res = await fetch('/api/estoque/transferir', {
@@ -526,7 +533,7 @@ function EstoqueContent() {
       ))
       setEditando((prev) => prev ? { ...prev, qtd_cozinha: json.qtd_cozinha } : null)
       setFeedbackTransferirModal({ msg: 'Transferido!', ok: true })
-      setQtdTransferirModal('')
+      setQtdTransferirModal('1')
       setTimeout(() => setFeedbackTransferirModal(null), 1500)
     } catch {
       setFeedbackTransferirModal({ msg: 'Erro de conexão', ok: false })
@@ -727,7 +734,7 @@ function EstoqueContent() {
 
               {/* Transferência rápida para a cozinha */}
               <button
-                onClick={() => { setModalTransferir(item); setQtdTransferir(''); setFeedbackTransferir(null) }}
+                onClick={() => { setModalTransferir(item); setQtdTransferir('1'); setFeedbackTransferir(null) }}
                 style={{ width: '100%', border: 'none', borderTop: `1px solid ${D.border}`, background: 'transparent', padding: '9px 16px', fontSize: 13, color: 'var(--accent-text)', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
                 <Icon nome="leftRight" size={16} /> Transferir para cozinha
               </button>
@@ -740,7 +747,7 @@ function EstoqueContent() {
       {modalTransferir && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.6)' }}
           onClick={(e) => { if (e.target === e.currentTarget) { setModalTransferir(null); setFeedbackTransferir(null) } }}>
-          <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
+          <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 18px 40px', boxSizing: 'border-box', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)' }}>
             <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
             <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Transferir para cozinha</p>
             <p style={{ color: D.text, fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{modalTransferir.produtos?.nome}</p>
@@ -749,13 +756,9 @@ function EstoqueContent() {
             </p>
 
             <label style={{ display: 'block', fontSize: 12, color: D.text2, fontWeight: 600, marginBottom: 8, marginLeft: 2 }}>Quantidade a transferir</label>
-            <input
-              type="number" min="1" placeholder="0" value={qtdTransferir}
-              onChange={(e) => setQtdTransferir(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') confirmarTransferir() }}
-              autoFocus
-              style={{ width: '100%', border: `2px solid #6366F1`, borderRadius: 16, padding: '12px', fontSize: 28, fontWeight: 800, textAlign: 'center', color: D.text, background: D.input, outline: 'none', marginBottom: 16, boxSizing: 'border-box' }}
-            />
+            <div style={{ marginBottom: 16 }}>
+              <CampoQuantidade valor={qtdTransferir} max={dispPrincipal(modalTransferir)} onMudar={setQtdTransferir} onEnter={confirmarTransferir} autoFocus />
+            </div>
 
             {feedbackTransferir && (
               <p style={{ fontSize: 14, textAlign: 'center', fontWeight: 600, marginBottom: 12, color: feedbackTransferir.ok ? '#10B981' : '#EF4444' }}>
@@ -763,10 +766,15 @@ function EstoqueContent() {
               </p>
             )}
 
-            <button onClick={confirmarTransferir} disabled={transferindo || !qtdTransferir || Number(qtdTransferir) <= 0}
-              style={{ width: '100%', padding: '14px', borderRadius: 16, background: '#6366F1', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: (transferindo || !qtdTransferir || Number(qtdTransferir) <= 0) ? 0.4 : 1 }}>
-              {transferindo ? 'Transferindo...' : 'Confirmar transferência'}
-            </button>
+            {(() => {
+              const ok = qtdValida(qtdTransferir, dispPrincipal(modalTransferir))
+              return (
+                <button onClick={confirmarTransferir} disabled={transferindo || !ok}
+                  style={{ width: '100%', padding: '14px', borderRadius: 16, background: '#6366F1', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: (transferindo || !ok) ? 0.4 : 1 }}>
+                  {transferindo ? 'Transferindo...' : dispPrincipal(modalTransferir) === 0 ? 'Principal sem estoque' : ok ? `Transferir ${qtdTransferir}` : Number(qtdTransferir) > dispPrincipal(modalTransferir) ? `Máximo ${dispPrincipal(modalTransferir)}` : 'Confirmar transferência'}
+                </button>
+              )
+            })()}
           </div>
         </div>
       )}
@@ -930,7 +938,7 @@ function EstoqueContent() {
                       { dir: 'cozinha' as const, label: 'Para cozinha' },
                       { dir: 'principal' as const, label: 'Para principal' },
                     ]).map(({ dir, label }) => (
-                      <button key={dir} onClick={() => { setDirecaoTransferir(dir); setQtdTransferirModal(''); setFeedbackTransferirModal(null) }}
+                      <button key={dir} onClick={() => { setDirecaoTransferir(dir); setQtdTransferirModal('1'); setFeedbackTransferirModal(null) }}
                         style={{ flex: 1, padding: '7px 4px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
                           background: direcaoTransferir === dir ? '#6366F1' : 'transparent',
                           color: direcaoTransferir === dir ? '#fff' : D.text2 }}>
@@ -943,17 +951,19 @@ function EstoqueContent() {
                     {' · '}
                     Cozinha: <strong style={{ color: D.text }}>{editando.qtd_cozinha ?? 0}</strong>
                   </p>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input type="number" min="1" placeholder="Qtd" value={qtdTransferirModal}
-                      onChange={(e) => setQtdTransferirModal(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') transferirDentroModal() }}
-                      style={{ ...inputStyle, flex: 1 }} />
-                    <button onClick={transferirDentroModal}
-                      disabled={transferindoModal || !qtdTransferirModal || Number(qtdTransferirModal) <= 0}
-                      style={{ padding: '10px 16px', borderRadius: 12, background: '#6366F1', color: '#fff', border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', opacity: (transferindoModal || !qtdTransferirModal || Number(qtdTransferirModal) <= 0) ? 0.4 : 1 }}>
-                      {transferindoModal ? '...' : 'Transferir'}
-                    </button>
-                  </div>
+                  {(() => {
+                    const disp = dispOrigem(editando, direcaoTransferir)
+                    const ok = qtdValida(qtdTransferirModal, disp)
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <CampoQuantidade valor={qtdTransferirModal} max={disp} onMudar={setQtdTransferirModal} onEnter={transferirDentroModal} />
+                        <button type="button" onClick={transferirDentroModal} disabled={transferindoModal || !ok}
+                          style={{ padding: '11px 16px', borderRadius: 12, background: '#6366F1', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: (transferindoModal || !ok) ? 0.4 : 1 }}>
+                          {transferindoModal ? 'Transferindo...' : disp === 0 ? 'Sem estoque na origem' : ok ? `Transferir ${qtdTransferirModal}` : Number(qtdTransferirModal) > disp ? `Máximo ${disp}` : 'Transferir'}
+                        </button>
+                      </div>
+                    )
+                  })()}
                   {feedbackTransferirModal && (
                     <p style={{ fontSize: 12, fontWeight: 600, marginTop: 8, color: feedbackTransferirModal.ok ? '#10B981' : '#EF4444' }}>
                       {feedbackTransferirModal.msg}

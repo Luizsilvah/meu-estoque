@@ -66,6 +66,17 @@ const CASOS = [
   ['usei 2 leite da cozinha, 3 bis do estoque', ['SAIDA cozinha', 'SAIDA principal']],
   ['voltei 2 leite, 1 granola', ['TRANSFERENCIA cozinha→principal', 'TRANSFERENCIA cozinha→principal']],
   ['usei 2 leite, devolvi 1 bis', ['SAIDA principal', 'TIPO? principal']],
+  // Não é transferência (bug: viravam TRANSFERENCIA)
+  ['passei 2 leite pra cozinha, 10 casquinha 15/01', ['TRANSFERENCIA principal→cozinha', 'TIPO? principal']],
+  ['devolvi 2 leite do estoque pro fornecedor', ['SAIDA principal']],
+  ['devolvi 2 leite pro fornecedor', ['SAIDA principal']],
+  ['mandei 3 bis pro fornecedor', ['SAIDA principal']],
+  ['o fornecedor mandou 10 leite', ['ENTRADA principal']],
+  ['passou da validade 2 leite', ['SAIDA principal']],
+  ['passou do prazo 2 leite da cozinha', ['SAIDA cozinha']],
+  ['venceu 2 leite', ['SAIDA principal']],
+  // Continua transferência
+  ['passei 2 leite pra cozinha, 3 bis', ['TRANSFERENCIA principal→cozinha', 'TRANSFERENCIA principal→cozinha']],
 ]
 
 // Validades na entrada: "quantidade = dd/mm×qtd + ..." de cada item (×0 = data

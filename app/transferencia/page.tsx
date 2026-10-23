@@ -6,6 +6,7 @@ import PageHeader from '@/app/components/ui/PageHeader'
 import SearchBar from '@/app/components/ui/SearchBar'
 import Card, { CARD_THUMB } from '@/app/components/ui/Card'
 import Icon from '@/app/components/ui/Icon'
+import CampoQuantidade from '@/app/components/ui/CampoQuantidade'
 
 import { D } from '@/app/lib/theme'
 import FotoThumb from '@/app/components/FotoThumb'
@@ -29,11 +30,6 @@ type Item = {
 
 import { Validade, diasAteVencer, controlaValidade } from '@/app/lib/validades'
 
-const inputStyle: React.CSSProperties = {
-  background: D.input, border: `1px solid ${D.border}`, borderRadius: 12,
-  padding: '10px 14px', fontSize: 14, color: D.text, outline: 'none', width: '100%', boxSizing: 'border-box',
-}
-
 export default function Transferencia() {
   return (
     <Suspense>
@@ -52,7 +48,8 @@ function TransferenciaContent() {
   const [selecionado, setSelecionado] = useState<Item | null>(null)
   const [direcao, setDirecao] = useState<'cozinha' | 'principal'>('cozinha')
   const [quantidade, setQuantidade] = useState('1')
-  const [lotesSelecionados, setLotesSelecionados] = useState<Record<string, number>>({})
+  /** Lotes marcados → quantidade digitada (texto; '' enquanto a pessoa apaga). Marcado = tem a chave. */
+  const [lotesSelecionados, setLotesSelecionados] = useState<Record<string, string>>({})
   const [transferindo, setTransferindo] = useState(false)
   const [erroTransf, setErroTransf] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -103,17 +100,17 @@ function TransferenciaContent() {
 
   function fechar() { setSelecionado(null); setFeedback(null); setErroTransf(null) }
 
-  function ajustarQtd(delta: number) {
-    setQuantidade((prev) => String(Math.max(1, (Number(prev) || 1) + delta)))
+  // Mesma regra na tela e no confirmar: com validades cadastradas a quantidade
+  // é a soma dos lotes marcados; sem validades, é o campo Quantidade.
+  function usaLotes(item: Item) {
+    return controlaValidade(item.produtos) && (validadesPorProduto[item.produto_id] ?? []).length > 0
   }
+  const totalLotes = Object.values(lotesSelecionados).reduce((s, q) => s + (Number(q) || 0), 0)
 
   async function confirmar() {
-    if (!selecionado) return
-    const vals = controlaValidade(selecionado.produtos) ? [...(validadesPorProduto[selecionado.produto_id] ?? [])] : []
-    const hasLotes = vals.length > 0
-    const totalLotes = Object.values(lotesSelecionados).reduce((s, q) => s + q, 0)
-    const qtd = hasLotes ? totalLotes : Math.max(1, Number(quantidade) || 1)
-    if (qtd <= 0) return
+    if (!selecionado || transferindo) return
+    const qtd = usaLotes(selecionado) ? totalLotes : Number(quantidade) || 0
+    if (!Number.isInteger(qtd) || qtd <= 0) return
     setTransferindo(true)
     setErroTransf(null)
     try {
@@ -201,16 +198,30 @@ function TransferenciaContent() {
         const cozinha = selecionado.qtd_cozinha ?? 0
         const unidade = selecionado.produtos?.unidade ?? 'un'
         const disponivelOrigem = direcao === 'cozinha' ? principal : cozinha
-        const qtd = Math.max(1, Number(quantidade) || 1)
         const semEstoque = disponivelOrigem === 0
-        // Produto que não controla validade: sem escolha de lotes, só a quantidade
-        const controla = controlaValidade(selecionado.produtos)
-        const vals = controla ? [...(validadesPorProduto[selecionado.produto_id] ?? [])].sort((a, b) => a.data_validade.localeCompare(b.data_validade)) : []
+        // Produto que não controla validade (ou sem validades cadastradas): só a quantidade
+        const comLotes = usaLotes(selecionado)
+        const vals = comLotes ? [...(validadesPorProduto[selecionado.produto_id] ?? [])].sort((a, b) => a.data_validade.localeCompare(b.data_validade)) : []
+        const somaLotes = vals.reduce((s, v) => s + v.quantidade, 0)
+        const semValidadeDisp = Math.max(0, selecionado.qtd_atual - somaLotes)
+        const maxDoLote = (id: string) => id === '__sem__' ? semValidadeDisp : vals.find((v) => v.id === id)?.quantidade ?? 0
+        const loteInvalido = Object.entries(lotesSelecionados).some(([id, q]) => !(Number(q) >= 1) || Number(q) > maxDoLote(id))
+        const qtdEfetiva = comLotes ? totalLotes : Number(quantidade) || 0
+        const marcarLote = (id: string, max: number) => setLotesSelecionados((prev) => {
+          const next = { ...prev }
+          if (id in next) delete next[id]
+          else next[id] = String(Math.min(1, max))
+          return next
+        })
+        const campoLote = (id: string, max: number) => (
+          <CampoQuantidade tamanho="pequeno" valor={lotesSelecionados[id]} max={max} rotulo="Quantidade do lote"
+            onMudar={(v) => setLotesSelecionados((prev) => ({ ...prev, [id]: v }))} />
+        )
 
         return (
           <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.6)' }}
             onClick={(e) => { if (e.target === e.currentTarget) fechar() }}>
-            <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 24px 40px', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ width: '100%', maxWidth: 480, background: D.card, borderRadius: '24px 24px 0 0', padding: '24px 18px calc(40px + env(safe-area-inset-bottom))', boxSizing: 'border-box', boxShadow: '0 -4px 40px rgba(0,0,0,0.5)', maxHeight: '90vh', overflowY: 'auto', overflowX: 'hidden' }}>
               <div style={{ width: 40, height: 4, borderRadius: 2, background: D.border, margin: '0 auto 20px' }} />
 
               <p style={{ color: D.text2, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Transferir</p>
@@ -234,14 +245,7 @@ function TransferenciaContent() {
               </div>
 
               {/* Validades — multi-select com qtd por lote */}
-              {(() => {
-                const somaLotes = vals.reduce((s, v) => s + v.quantidade, 0)
-                const semValidadeDisp = Math.max(0, selecionado.qtd_atual - somaLotes)
-                const hasLoteSection = vals.length > 0 || semValidadeDisp > 0
-                const totalLotes = Object.values(lotesSelecionados).reduce((s, q) => s + q, 0)
-
-                if (!controla || !hasLoteSection) return null
-                return (
+              {comLotes && (
                   <div style={{ marginBottom: 20 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 10, padding: '8px 12px', marginBottom: 10 }}>
                       <Icon nome="alert" size={16} cor="#F97316" />
@@ -250,8 +254,7 @@ function TransferenciaContent() {
                     <p style={{ color: D.text2, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Selecione os lotes transferidos:</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {vals.map((v, idx) => {
-                        const qtdSel = lotesSelecionados[v.id] ?? 0
-                        const checked = qtdSel > 0
+                        const checked = v.id in lotesSelecionados
                         const dias = diasAteVencer(v.data_validade)
                         const dataFmt = new Date(v.data_validade + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
                         const isFifo = idx === 0
@@ -263,59 +266,34 @@ function TransferenciaContent() {
                         else if (dias <= 30) { corData = '#F59E0B' }
                         return (
                           <div key={v.id} style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${checked ? '#6366F1' : D.border}`, background: checked ? 'rgba(99,102,241,0.08)' : D.input, display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <button onClick={() => setLotesSelecionados((prev) => {
-                              const next = { ...prev }
-                              if (next[v.id]) { delete next[v.id] } else { next[v.id] = Math.min(1, v.quantidade) }
-                              return next
-                            })} style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? '#6366F1' : D.border}`, background: checked ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0 }}>
+                            <button type="button" aria-label={checked ? 'Desmarcar lote' : 'Marcar lote'} onClick={() => marcarLote(v.id, v.quantidade)} style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? '#6366F1' : D.border}`, background: checked ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0 }}>
                               {checked && <Icon nome="tick" size={14} cor="#fff" traco={3} />}
                             </button>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                                 <span style={{ color: corData, fontSize: 13, fontWeight: 700 }}>{dataFmt}</span>
                                 {isFifo && <span style={{ fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 5, background: '#6366F1', color: '#fff' }}>FIFO</span>}
                                 {urgBadge && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 5, background: `${urgColor}22`, color: urgColor }}>{urgBadge}</span>}
                               </div>
                               <span style={{ color: D.text2, fontSize: 11 }}>{v.quantidade} {unidade}</span>
                             </div>
-                            {checked && (
-                              <input type="number" min="1" max={v.quantidade} value={qtdSel}
-                                onChange={(e) => {
-                                  const val = Math.min(v.quantidade, Math.max(1, Number(e.target.value) || 1))
-                                  setLotesSelecionados((prev) => ({ ...prev, [v.id]: val }))
-                                }}
-                                style={{ width: 60, background: D.card, border: `1px solid ${D.border}`, borderRadius: 8, padding: '5px 8px', fontSize: 14, fontWeight: 700, textAlign: 'center', color: D.text, outline: 'none' }}
-                              />
-                            )}
+                            {checked && campoLote(v.id, v.quantidade)}
                           </div>
                         )
                       })}
 
                       {semValidadeDisp > 0 && (() => {
-                        const qtdSel = lotesSelecionados['__sem__'] ?? 0
-                        const checked = qtdSel > 0
+                        const checked = '__sem__' in lotesSelecionados
                         return (
                           <div style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${checked ? '#6366F1' : D.border}`, background: checked ? 'rgba(99,102,241,0.08)' : D.input, display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <button onClick={() => setLotesSelecionados((prev) => {
-                              const next = { ...prev }
-                              if (next['__sem__']) { delete next['__sem__'] } else { next['__sem__'] = Math.min(1, semValidadeDisp) }
-                              return next
-                            })} style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? '#6366F1' : D.border}`, background: checked ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0 }}>
+                            <button type="button" aria-label={checked ? 'Desmarcar lote' : 'Marcar lote'} onClick={() => marcarLote('__sem__', semValidadeDisp)} style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${checked ? '#6366F1' : D.border}`, background: checked ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', padding: 0 }}>
                               {checked && <Icon nome="tick" size={14} cor="#fff" traco={3} />}
                             </button>
-                            <div style={{ flex: 1 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                               <span style={{ fontSize: 13, fontWeight: 700, color: D.text }}>Sem validade</span>
                               <span style={{ fontSize: 11, color: D.text2, display: 'block' }}>{semValidadeDisp} {unidade}</span>
                             </div>
-                            {checked && (
-                              <input type="number" min="1" max={semValidadeDisp} value={qtdSel}
-                                onChange={(e) => {
-                                  const val = Math.min(semValidadeDisp, Math.max(1, Number(e.target.value) || 1))
-                                  setLotesSelecionados((prev) => ({ ...prev, ['__sem__']: val }))
-                                }}
-                                style={{ width: 60, background: D.card, border: `1px solid ${D.border}`, borderRadius: 8, padding: '5px 8px', fontSize: 14, fontWeight: 700, textAlign: 'center', color: D.text, outline: 'none' }}
-                              />
-                            )}
+                            {checked && campoLote('__sem__', semValidadeDisp)}
                           </div>
                         )
                       })()}
@@ -328,26 +306,16 @@ function TransferenciaContent() {
                       </div>
                     )}
                   </div>
-                )
-              })()}
+              )}
 
               {/* Quantidade — apenas quando não há lotes */}
-              {vals.length === 0 && (
+              {!comLotes && (
                 <>
                   <p style={{ color: D.text2, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
                     Quantidade <span style={{ color: D.muted }}>({disponivelOrigem} disponível)</span>
                   </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                    <button onClick={() => ajustarQtd(-1)}
-                      style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 22, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
-                      −
-                    </button>
-                    <input type="number" min="1" value={quantidade} onChange={(e) => setQuantidade(e.target.value)}
-                      style={{ ...inputStyle, textAlign: 'center', fontSize: 24, fontWeight: 800, padding: '10px 6px' }} />
-                    <button onClick={() => ajustarQtd(1)}
-                      style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${D.border}`, background: D.input, color: D.text, fontSize: 22, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
-                      +
-                    </button>
+                  <div style={{ marginBottom: 20 }}>
+                    <CampoQuantidade valor={quantidade} max={disponivelOrigem} onMudar={setQuantidade} onEnter={confirmar} />
                   </div>
                 </>
               )}
@@ -360,17 +328,22 @@ function TransferenciaContent() {
               )}
 
               {(() => {
-                const somaLotes = vals.reduce((s, v) => s + v.quantidade, 0)
-                const semValidadeDisp = Math.max(0, selecionado.qtd_atual - somaLotes)
-                const hasLotes = controla && (vals.length > 0 || semValidadeDisp > 0)
-                const totalLotes = Object.values(lotesSelecionados).reduce((s, q) => s + q, 0)
-                const qtdEfetiva = hasLotes ? totalLotes : qtd
-                const desabilitado = transferindo || semEstoque || qtdEfetiva <= 0 || qtdEfetiva > disponivelOrigem || (hasLotes && totalLotes === 0)
+                const semLote = comLotes && Object.keys(lotesSelecionados).length === 0
+                const acima = !semEstoque && qtdEfetiva > disponivelOrigem
+                const desabilitado = transferindo || semEstoque || semLote || loteInvalido || qtdEfetiva <= 0 || acima
                 return (
-                  <button onClick={confirmar} disabled={desabilitado}
-                    style={{ width: '100%', padding: '14px', borderRadius: 16, background: '#6366F1', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: desabilitado ? 0.5 : 1 }}>
-                    {transferindo ? 'Transferindo...' : semEstoque ? 'Sem estoque na origem' : (hasLotes && totalLotes === 0) ? 'Selecione pelo menos 1 lote' : 'Confirmar'}
-                  </button>
+                  <>
+                    {acima && (
+                      <p style={{ color: '#EF4444', fontSize: 12, fontWeight: 600, textAlign: 'center', marginBottom: 10 }}>
+                        {direcao === 'cozinha' ? 'O principal' : 'A cozinha'} só tem {disponivelOrigem} {unidade}
+                      </p>
+                    )}
+                    <button onClick={confirmar} disabled={desabilitado}
+                      style={{ width: '100%', padding: '14px', borderRadius: 16, background: '#6366F1', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: desabilitado ? 0.5 : 1 }}>
+                      {transferindo ? 'Transferindo...' : semEstoque ? 'Sem estoque na origem' : semLote ? 'Selecione pelo menos 1 lote'
+                        : qtdEfetiva > 0 ? `Transferir ${qtdEfetiva} ${unidade}` : 'Confirmar'}
+                    </button>
+                  </>
                 )
               })()}
             </div>

@@ -76,12 +76,20 @@ registrar('entrada', ['chegou', 'chegaram', 'chegada', 'recebi', 'recebeu', 'rec
   'entrou', 'entraram', 'entrada', 'coloquei', 'colocou', 'colocamos', 'botei', 'botou', 'botamos'])
 registrar('transferencia', ['passei', 'passou', 'passamos', 'transferi', 'transferiu', 'transferimos', 'levei', 'levou',
   'levamos', 'mandei', 'mandou', 'mandamos', 'transferencia', 'transf'])
+// Venceu/estragou = perda (saída). "passou da validade" é tratado em interpretarItem.
+registrar('saida', ['venceu', 'venceram', 'estragou', 'estragaram'])
 // "voltei 2 leite" = transferência que, sem lugar, vai da cozinha pro principal.
 const VOLTAR = ['voltei', 'voltou', 'voltamos', 'voltaram']
 registrar('transferencia', VOLTAR)
 // "devolvi" só é transferência com lugar na frase ("devolvi 2 leite pro estoque");
 // sem lugar pode ser devolução ao fornecedor → fica sem tipo, perguntando.
 const DEVOLVER = new Set(['devolvi', 'devolveu', 'devolvemos', 'devolveram'])
+// "passou da validade / do prazo / vencido" não é transferência: é perda (saída).
+const PASSAR = new Set(['passei', 'passou', 'passamos'])
+const VENCIDO = new Set(['validade', 'val', 'prazo', 'vencimento', 'venc', 'vencido', 'vencidos', 'vencida', 'vencidas'])
+// Transferência é só entre principal e cozinha. Com fornecedor na frase é compra
+// ("o fornecedor mandou 10 leite") ou devolução ("devolvi 2 leite pro fornecedor").
+const FORNECEDOR = new Set(['fornecedor', 'fornecedores', 'forn'])
 
 const NUMEROS_EXTENSO: Record<string, number> = {
   um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10,
@@ -93,7 +101,7 @@ const LIGACAO = new Set([
   'no', 'na', 'nos', 'nas', 'em', 'e', 'com', 'pela', 'pelo', 'mais', 'fora', 'hoje', 'ontem', 'agora', 'usar', 'uso',
   'un', 'und', 'unid', 'uni', 'unidade', 'unidades', 'x', 'validade', 'val', 'vence', 'venc', 'vencimento',
   'cozinha', 'coz', 'principal', 'estoque', 'deposito', 'freezer', 'camara', 'dar', 'demos', 'dei', 'deu', 'que', 'la', 'ali', 'tb', 'tambem',
-  'um', 'uma',
+  'um', 'uma', 'prazo', 'vencido', 'vencidos', 'vencida', 'vencidas', 'vencimento', 'fornecedor', 'fornecedores', 'forn',
 ])
 
 // Embalagem/medida: ignoradas na busca quando o nome do produto não tem a palavra.
@@ -333,6 +341,12 @@ function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date,
     if (temLugar) tipo = 'transferencia'
     else duvida_tipo = `“${verbo}” sem lugar — voltou pro estoque (transferência) ou foi pro fornecedor (saída)?`
   }
+  if (PASSAR.has(verbo) && tokens.some((t) => VENCIDO.has(t))) tipo = 'saida'
+  const idxForn = tokens.findIndex((t) => FORNECEDOR.has(t))
+  if (idxForn >= 0 && (tipo === 'transferencia' || DEVOLVER.has(verbo))) {
+    tipo = DEVOLVER.has(verbo) || PREP_PARA.has(tokens[idxForn - 1] ?? '') ? 'saida' : 'entrada'
+    duvida_tipo = null
+  }
 
   // Quantidade: primeiro número (10, 10x, x10, 10un); senão um..dez por extenso; senão 1.
   let quantidade = 1
@@ -359,7 +373,7 @@ function interpretarItem(texto: string, catalogo: ProdutoCatalogo[], hoje: Date,
   let local: Local = temCozinha ? 'cozinha' : 'principal'
   let origem: Local | null = null
   let destino: Local | null = null
-  if (tipo === 'transferencia' || DEVOLVER.has(verbo)) {
+  if (tipo === 'transferencia' || (DEVOLVER.has(verbo) && tipo === null)) {
     if (paraCozinha) destino = 'cozinha'
     else if (paraPrincipal || deCozinha) destino = 'principal'
     else if (dePrincipal) destino = 'cozinha'
@@ -421,7 +435,11 @@ export function interpretarLancamento(
     if (linha !== linhaAnterior) { anterior = null; linhaAnterior = linha }
     const bruto = interpretarItem(trecho, catalogo, hoje, apelidos)
     let item: ItemInterpretado
-    if (bruto.tipo === null && !bruto.duvida_tipo && anterior?.tipo) {
+    if (bruto.tipo === null && !bruto.duvida_tipo && anterior?.tipo === 'transferencia' && bruto.lotes.length) {
+      // Validade só existe na entrada: "passei 2 leite pra cozinha, 10 casquinha 15/01"
+      // não é a casquinha indo pra cozinha. Fica sem tipo, perguntando.
+      item = { ...semTemLugar(bruto), tipo_herdado: false, duvida_tipo: 'Tem validade — é entrada? (o item anterior era transferência)' }
+    } else if (bruto.tipo === null && !bruto.duvida_tipo && anterior?.tipo) {
       // Refaz com o tipo herdado para acertar local/direção.
       const comTipo = interpretarItem(`${palavraDoTipo(anterior.tipo)} ${trecho}`, catalogo, hoje, apelidos)
       item = { ...semTemLugar(comTipo), texto_original: trecho, tipo_herdado: true }
