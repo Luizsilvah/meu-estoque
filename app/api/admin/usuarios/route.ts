@@ -1,11 +1,10 @@
 import { createSupabaseAdmin } from '../../../lib/supabase-admin'
-import { createSupabaseServer } from '../../../lib/supabase-server'
 import { sincronizarAliases } from '../../../lib/permissoes'
+import { usuarioLogado, perfilDe } from '../../../lib/exigirPermissao'
 
 export async function POST(request: Request) {
   // 1. Identifica o usuário pela sessão (server client com cookies)
-  const serverClient = await createSupabaseServer()
-  const { data: { user } } = await serverClient.auth.getUser()
+  const user = await usuarioLogado()
 
   if (!user) {
     return Response.json({ erro: 'Não autenticado' }, { status: 401 })
@@ -13,11 +12,7 @@ export async function POST(request: Request) {
 
   // 2. Verifica perfil usando service role (bypassa RLS da tabela perfis)
   const adminClient = createSupabaseAdmin()
-  const { data: perfil } = await adminClient
-    .from('perfis')
-    .select('perfil')
-    .eq('id', user.id)
-    .single()
+  const perfil = await perfilDe(user)
 
   if (perfil?.perfil !== 'admin') {
     return Response.json({ erro: 'Acesso negado: apenas admins podem criar usuários' }, { status: 403 })
@@ -84,16 +79,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const serverClient = await createSupabaseServer()
-  const { data: { user } } = await serverClient.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const adminClient = createSupabaseAdmin()
-  const { data: perfil } = await adminClient
-    .from('perfis')
-    .select('perfil')
-    .eq('id', user.id)
-    .single()
+  const perfil = await perfilDe(user)
 
   if (perfil?.perfil !== 'admin') {
     return Response.json({ erro: 'Acesso negado' }, { status: 403 })
@@ -111,16 +101,11 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const serverClient = await createSupabaseServer()
-  const { data: { user } } = await serverClient.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const adminClient = createSupabaseAdmin()
-  const { data: perfil } = await adminClient
-    .from('perfis')
-    .select('perfil')
-    .eq('id', user.id)
-    .single()
+  const perfil = await perfilDe(user)
 
   if (perfil?.perfil !== 'admin') {
     return Response.json({ erro: 'Acesso negado' }, { status: 403 })
@@ -157,19 +142,14 @@ export async function PATCH(request: Request) {
 
 // Lista todos os usuários (apenas admin)
 export async function GET() {
-  const serverClient = await createSupabaseServer()
-  const { data: { user } } = await serverClient.auth.getUser()
+  const user = await usuarioLogado()
 
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   // Usa service role para bypassar RLS ao verificar e listar perfis
   const adminClient = createSupabaseAdmin()
 
-  const { data: perfil } = await adminClient
-    .from('perfis')
-    .select('perfil')
-    .eq('id', user.id)
-    .single()
+  const perfil = await perfilDe(user)
 
   if (perfil?.perfil !== 'admin') {
     return Response.json({ erro: 'Acesso negado' }, { status: 403 })

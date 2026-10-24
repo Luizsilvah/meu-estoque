@@ -3,8 +3,8 @@
 // supabase/migrations/20261005120000_vw_validades_divergentes.sql), já com os
 // lotes atuais de cada um para a página /validades-divergentes.
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
-import { createSupabaseServer } from '../../lib/supabase-server'
 import type { Validade } from '../../lib/validades'
+import { usuarioLogado } from '../../lib/exigirPermissao'
 
 export type TipoDivergencia = 'SOBRA_VALIDADE' | 'FALTA_VALIDADE' | 'SEM_VALIDADE'
 
@@ -21,8 +21,7 @@ export type ItemValidadeDivergente = {
 }
 
 export async function GET() {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const admin = createSupabaseAdmin()

@@ -1,11 +1,9 @@
 // Endpoint GET /api/estoque — retorna todos os itens do estoque com dados do produto e fornecedor
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
-import { createSupabaseServer } from '@/app/lib/supabase-server'
-import { temPermissao } from '@/app/lib/exigirPermissao'
+import { temPermissao, usuarioLogado } from '@/app/lib/exigirPermissao'
 
 export async function GET() {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   const supabase = createSupabaseAdmin()
   // Colunas explícitas em vez de '*' — essa é a rota mais chamada do app (quase toda
@@ -21,7 +19,7 @@ export async function GET() {
 
   // Preço de custo só para admin; para os outros vem null. (Quem edita produto
   // sem ser admin não manda o preço — ver PATCH /api/produto.)
-  if (await temPermissao(user.id, 'admin')) return Response.json(data)
+  if (await temPermissao(user, 'admin')) return Response.json(data)
   return Response.json((data ?? []).map((item) => ({
     ...item,
     produtos: item.produtos ? { ...item.produtos, preco_custo: null } : item.produtos,

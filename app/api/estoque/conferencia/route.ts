@@ -6,8 +6,7 @@
 // app/conferencia/page.tsx), e o motivo "correcao" nem chegava a tocar a
 // validade — ver supabase/migrations/20261003120000_conferencia_ajustar.sql.
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
-import { createSupabaseServer } from '@/app/lib/supabase-server'
-import { exigirPermissao } from '@/app/lib/exigirPermissao'
+import { exigirPermissao, usuarioLogado, perfilDe } from '@/app/lib/exigirPermissao'
 
 const TIPOS_VALIDOS = new Set(['entrada', 'saida_uso', 'descarte_vencido', 'correcao'])
 
@@ -15,8 +14,7 @@ type LoteAdd = { data_validade: string; quantidade: number }
 type LoteRemover = { validade_id: string; quantidade: number }
 
 export async function PATCH(request: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   const negado = await exigirPermissao(user, ['conferencia', 'estoque'])
   if (negado) return negado
@@ -52,7 +50,7 @@ export async function PATCH(request: Request) {
   }
 
   // Nome amigável para o histórico — mesmo padrão de /api/movimentacao e /api/nota/lancar
-  const { data: perfil } = await admin.from('perfis').select('nome').eq('id', user.id).single()
+  const perfil = await perfilDe(user)
   const usuario_nome = perfil?.nome ?? user.email?.split('@')[0] ?? null
 
   const { data, error } = await admin

@@ -6,21 +6,20 @@
 // Últimos 30 dias, 20 por página, mais recentes primeiro. "Carregar mais" manda
 // ?antes=<criado_em do último registro> (cursor — não repete nem pula registro
 // quando entra um lançamento novo no meio).
-import { createSupabaseServer } from '@/app/lib/supabase-server'
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 import type { RegistroLog } from '@/app/lib/lancamentoRapidoLog'
+import { usuarioLogado, perfilDe } from '../../../lib/exigirPermissao'
 
 const POR_PAGINA = 20
 const DIAS = 30
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function GET(request: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const supabase = createSupabaseAdmin()
-  const { data: perfil } = await supabase.from('perfis').select('perfil').eq('id', user.id).maybeSingle()
+  const perfil = await perfilDe(user)
   const admin = perfil?.perfil === 'admin'
 
   const params = new URL(request.url).searchParams

@@ -1,23 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
-import { createSupabaseServer } from '@/app/lib/supabase-server'
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
+import { usuarioLogado, perfilDe } from '../../../lib/exigirPermissao'
 
 // POST /api/estoque/zerar — "Zerar todo o estoque" (ação de admin da tela de Conferência).
 // Zera qtd_atual/qtd_cozinha de todos os produtos e apaga todas as validades, de forma
 // atômica (RPC estoque_zerar_tudo). NÃO mexe em qtd_base/qtd_max nem apaga produtos.
 export async function POST(request: Request) {
   // 1. Usuário logado
-  const serverClient = await createSupabaseServer()
-  const { data: { user } } = await serverClient.auth.getUser()
+  const user = await usuarioLogado()
   if (!user?.email) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   // 2. Perfil admin
   const adminClient = createSupabaseAdmin()
-  const { data: perfil } = await adminClient
-    .from('perfis')
-    .select('perfil')
-    .eq('id', user.id)
-    .single()
+  const perfil = await perfilDe(user)
   if (perfil?.perfil !== 'admin') return Response.json({ erro: 'Acesso negado' }, { status: 403 })
 
   // 3. Senha do body

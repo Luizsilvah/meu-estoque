@@ -1,9 +1,8 @@
 import { createSupabaseAdmin } from '../../../lib/supabase-admin'
-import { createSupabaseServer } from '../../../lib/supabase-server'
+import { usuarioLogado } from '../../../lib/exigirPermissao'
 
 export async function GET() {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   const admin = createSupabaseAdmin()
   const [{ data, error }, { data: semControle, error: erroProdutos }] = await Promise.all([

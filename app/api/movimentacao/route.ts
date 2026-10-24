@@ -4,9 +4,8 @@
 // supabase/migrations/20261006120000_movimentacao_registrar.sql. Antes, o
 // histórico, o estoque e cada lote eram gravados em chamadas separadas, e uma
 // falha no meio deixava qtd_atual diferente da soma dos lotes.
-import { createSupabaseServer } from '@/app/lib/supabase-server'
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
-import { exigirPermissao } from '@/app/lib/exigirPermissao'
+import { exigirPermissao, usuarioLogado, perfilDe } from '@/app/lib/exigirPermissao'
 
 type ResultadoMovimentacao = { qtd_atual: number; qtd_cozinha: number; qtd_base: number | null }
 type LoteAdd = { data_validade: string; quantidade: number }
@@ -38,8 +37,7 @@ export async function POST(request: Request) {
   }
 
   // Identifica o usuário logado — obrigatório para registrar movimentação
-  const serverClient = await createSupabaseServer()
-  const { data: { user } } = await serverClient.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   const negado = await exigirPermissao(user, tipo === 'entrada' ? 'movimentacao' : ['movimentacao', 'saida'])
   if (negado) return negado
@@ -47,11 +45,7 @@ export async function POST(request: Request) {
   const supabase = createSupabaseAdmin()
 
   // Busca o nome amigável do perfil; usa email como fallback
-  const { data: perfil } = await supabase
-    .from('perfis')
-    .select('nome')
-    .eq('id', user.id)
-    .single()
+  const perfil = await perfilDe(user)
   const usuario_nome = perfil?.nome ?? user.email?.split('@')[0] ?? null
 
   // Validade obrigatória: entrada de produto que controla validade tem que

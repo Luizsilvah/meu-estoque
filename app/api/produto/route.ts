@@ -1,15 +1,8 @@
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
-import { createSupabaseServer } from '../../lib/supabase-server'
-import { exigirPermissao, temPermissao } from '../../lib/exigirPermissao'
-
-async function autenticar() {
-  const s = await createSupabaseServer()
-  const { data: { user } } = await s.auth.getUser()
-  return user
-}
+import { exigirPermissao, temPermissao, usuarioLogado } from '../../lib/exigirPermissao'
 
 export async function DELETE(request: Request) {
-  const negado = await exigirPermissao(await autenticar(), 'cadastrar')
+  const negado = await exigirPermissao(await usuarioLogado(), 'cadastrar')
   if (negado) return negado
 
   const { searchParams } = new URL(request.url)
@@ -36,13 +29,13 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const user = await autenticar()
+  const user = await usuarioLogado()
   const negado = await exigirPermissao(user, 'estoque')
   if (negado) return negado
   // Só admin vê o preço de custo (GET /api/estoque manda null para os outros):
   // de quem não é admin o preço é ignorado, senão salvar o formulário com o
   // campo vazio apagaria o preço cadastrado.
-  const ehAdmin = await temPermissao(user!.id, 'admin')
+  const ehAdmin = await temPermissao(user!, 'admin')
 
   const body = await request.json().catch(() => null)
   // qtd_atual/qtd_cozinha NÃO são gravadas aqui: mudar a quantidade sem mexer

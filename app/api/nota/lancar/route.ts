@@ -1,6 +1,5 @@
-import { createSupabaseServer } from '../../../lib/supabase-server'
 import { createSupabaseAdmin } from '../../../lib/supabase-admin'
-import { exigirPermissao } from '@/app/lib/exigirPermissao'
+import { exigirPermissao, usuarioLogado, perfilDe } from '@/app/lib/exigirPermissao'
 
 type LoteInput = { data_validade: string; quantidade: number }
 
@@ -35,8 +34,7 @@ function dataNoPassado(dataStr: string): boolean {
 }
 
 export async function POST(req: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   const negado = await exigirPermissao(user, 'nota')
   if (negado) return negado
@@ -56,11 +54,7 @@ export async function POST(req: Request) {
   const admin = createSupabaseAdmin()
 
   // Nome amigável para o histórico de movimentações (mesmo padrão de /api/movimentacao)
-  const { data: perfil } = await admin
-    .from('perfis')
-    .select('nome')
-    .eq('id', user.id)
-    .single()
+  const perfil = await perfilDe(user)
   const usuario_nome = perfil?.nome ?? user.email?.split('@')[0] ?? null
 
   // Produtos existentes que não controlam validade: entram sem lote (a função

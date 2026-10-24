@@ -1,6 +1,5 @@
-import { createSupabaseServer } from '../../lib/supabase-server'
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
-import { temPermissao } from '@/app/lib/exigirPermissao'
+import { temPermissao, usuarioLogado, perfilDe } from '@/app/lib/exigirPermissao'
 
 // Nome do canal Realtime Broadcast — um por canal de chat (geral ou grupo).
 // Broadcast, não postgres_changes: o banco usa RLS deny-all (ver
@@ -16,14 +15,14 @@ function canalChat(grupo_id: string | null) {
 
 // Grupo: só admin ou membro lê/escreve (mesma regra da lista em /api/grupos).
 // O canal geral (grupo_id null) é de todos.
-async function podeUsarGrupo(userId: string, grupo_id: string | null) {
+async function podeUsarGrupo(usuario: { id: string }, grupo_id: string | null) {
   if (!grupo_id) return true
-  if (await temPermissao(userId, 'admin')) return true
+  if (await temPermissao(usuario, 'admin')) return true
   const { count } = await createSupabaseAdmin()
     .from('grupo_membros')
     .select('usuario_id', { count: 'exact', head: true })
     .eq('grupo_id', grupo_id)
-    .eq('usuario_id', userId)
+    .eq('usuario_id', usuario.id)
   return (count ?? 0) > 0
 }
 
@@ -33,10 +32,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const grupo_id = searchParams.get('grupo_id')
 
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
-  if (!await podeUsarGrupo(user.id, grupo_id)) return SEM_ACESSO_GRUPO()
+  if (!await podeUsarGrupo(user, grupo_id)) return SEM_ACESSO_GRUPO()
 
   const admin = createSupabaseAdmin()
   let query = admin
@@ -54,8 +52,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const body = await request.json().catch(() => null)
@@ -63,10 +60,10 @@ export async function POST(request: Request) {
   const grupo_id = body?.grupo_id ?? null
   const imagem_url = body?.imagem_url ?? null
   if (!texto && !imagem_url) return Response.json({ erro: 'Mensagem vazia' }, { status: 400 })
-  if (!await podeUsarGrupo(user.id, grupo_id)) return SEM_ACESSO_GRUPO()
+  if (!await podeUsarGrupo(user, grupo_id)) return SEM_ACESSO_GRUPO()
 
   const admin = createSupabaseAdmin()
-  const { data: perfil } = await admin.from('perfis').select('nome').eq('id', user.id).single()
+  const perfil = await perfilDe(user)
   const usuario_nome = perfil?.nome ?? user.email ?? 'Usuário'
 
   const { data, error } = await admin
@@ -87,12 +84,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const admin = createSupabaseAdmin()
-  const { data: perfil } = await admin.from('perfis').select('perfil').eq('id', user.id).single()
+  const perfil = await perfilDe(user)
   if (perfil?.perfil !== 'admin') return Response.json({ erro: 'Acesso negado' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)

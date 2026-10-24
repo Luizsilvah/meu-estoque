@@ -3,8 +3,7 @@
 // banco, ver supabase/migrations/20261001120000_previsao_compra_quinta.sql).
 // Usado pelo badge da tela de Estoque e pela página "Lista de Compras da Quinta".
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
-import { createSupabaseServer } from '../../lib/supabase-server'
-import { exigirPermissao } from '@/app/lib/exigirPermissao'
+import { exigirPermissao, usuarioLogado } from '@/app/lib/exigirPermissao'
 
 export type ItemPrevisaoCompra = {
   produto_id: string
@@ -30,8 +29,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export async function GET() {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   const negado = await exigirPermissao(user, ['compras-quinta', 'estoque'])
   if (negado) return negado

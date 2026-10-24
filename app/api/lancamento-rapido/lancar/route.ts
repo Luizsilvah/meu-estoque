@@ -15,10 +15,10 @@
 // Saída sem lotes escolhidos à mão ("lotes_remover" ausente) usa FEFO calculado
 // aqui com os lotes atuais do banco — assim dois itens do mesmo produto na mesma
 // lista não tentam tirar do mesmo lote já consumido.
-import { createSupabaseServer } from '@/app/lib/supabase-server'
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
 import { FUNCOES, podeAcessar } from '@/app/lib/permissoes'
 import type { ItemLog } from '@/app/lib/lancamentoRapidoLog'
+import { usuarioLogado, perfilDe } from '../../../lib/exigirPermissao'
 
 type LoteAdd = { data_validade: string; quantidade: number }
 type LoteRemover = { validade_id: string; quantidade: number }
@@ -76,8 +76,7 @@ function lerLotesRemover(v: unknown): LoteRemover[] | string {
 }
 
 export async function POST(request: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   let body: { itens?: unknown; texto?: unknown }
@@ -90,7 +89,7 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseAdmin()
 
-  const { data: perfil } = await supabase.from('perfis').select('nome, perfil, permissoes').eq('id', user.id).maybeSingle()
+  const perfil = await perfilDe(user)
   const usuarioNome = perfil?.nome ?? user.email?.split('@')[0] ?? null
   const pode = (id: string) => {
     const f = FUNCOES.find((x) => x.id === id)

@@ -1,11 +1,9 @@
 import webpush from 'web-push'
-import { createSupabaseServer } from '../../../lib/supabase-server'
 import { createSupabaseAdmin } from '../../../lib/supabase-admin'
-import { exigirPermissao } from '@/app/lib/exigirPermissao'
+import { exigirPermissao, usuarioLogado } from '@/app/lib/exigirPermissao'
 
 export async function POST(req: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   const negado = await exigirPermissao(user, 'admin')
   if (negado) return negado

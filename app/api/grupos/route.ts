@@ -1,15 +1,14 @@
-import { createSupabaseServer } from '../../lib/supabase-server'
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
+import { usuarioLogado, perfilDe } from '../../lib/exigirPermissao'
 
 export async function GET() {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const admin = createSupabaseAdmin()
 
   // Busca perfil para saber se é admin
-  const { data: perfil } = await admin.from('perfis').select('perfil').eq('id', user.id).single()
+  const perfil = await perfilDe(user)
   const isAdmin = perfil?.perfil === 'admin'
 
   let query = admin
@@ -31,12 +30,11 @@ export async function GET() {
 }
 
 export async function DELETE(request: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const admin = createSupabaseAdmin()
-  const { data: perfil } = await admin.from('perfis').select('perfil').eq('id', user.id).single()
+  const perfil = await perfilDe(user)
   if (perfil?.perfil !== 'admin') return Response.json({ erro: 'Acesso negado' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
@@ -49,8 +47,7 @@ export async function DELETE(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const body = await request.json().catch(() => null)

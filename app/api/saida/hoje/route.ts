@@ -4,7 +4,7 @@
 // movimentacoes não guarda o lugar (principal/cozinha): a tela completa isso
 // com o que ela mesma anotou no aparelho.
 import { createSupabaseAdmin } from '@/app/lib/supabase-admin'
-import { createSupabaseServer } from '@/app/lib/supabase-server'
+import { usuarioLogado } from '../../../lib/exigirPermissao'
 
 export type SaidaHoje = {
   id: string
@@ -22,8 +22,7 @@ function inicioDeHojeBahia(): string {
 }
 
 export async function GET() {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const admin = createSupabaseAdmin()

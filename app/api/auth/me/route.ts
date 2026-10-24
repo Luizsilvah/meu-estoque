@@ -1,18 +1,11 @@
-import { createSupabaseServer } from '../../../lib/supabase-server'
-import { createSupabaseAdmin } from '../../../lib/supabase-admin'
+import { usuarioLogado, perfilDe } from '../../../lib/exigirPermissao'
 
 export async function GET() {
-  const serverClient = await createSupabaseServer()
-  const { data: { user } } = await serverClient.auth.getUser()
+  const user = await usuarioLogado()
 
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
-  const adminClient = createSupabaseAdmin()
-  const { data: perfil } = await adminClient
-    .from('perfis')
-    .select('perfil, nome, permissoes')
-    .eq('id', user.id)
-    .single()
+  const perfil = await perfilDe(user)
 
   // Permissões mudam pela tela Equipe: nunca guardar em cache (navegador/CDN),
   // para valer no próximo carregamento sem precisar sair e entrar.

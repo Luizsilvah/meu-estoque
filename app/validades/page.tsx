@@ -5,6 +5,7 @@ import PageHeader from '@/app/components/ui/PageHeader'
 
 import { D } from '@/app/lib/theme'
 import type { Validade } from '@/app/lib/validades'
+import { buscarEstoque } from '@/app/lib/estoqueCache'
 import type { ItemValidadeDivergente } from '@/app/api/validades-divergentes/route'
 import ListaDivergentes, { type AbaDivergentes } from './Divergentes'
 import ListaVencendo, { lotesVencendo, type ItemEstoqueValidade, type Janela } from './Vencendo'
@@ -37,9 +38,12 @@ async function buscarDivergentes(): Promise<Resultado<ItemValidadeDivergente[]>>
 
 async function buscarVencendo(): Promise<Resultado<{ estoque: ItemEstoqueValidade[]; validades: Validade[] }>> {
   try {
-    const [resEstoque, resValidades] = await Promise.all([fetch('/api/estoque'), fetch('/api/validades/todos')])
-    const [estoque, validades] = await Promise.all([resEstoque.json(), resValidades.json()])
-    if (!Array.isArray(estoque) || !Array.isArray(validades)) return { erro: estoque?.erro ?? validades?.erro ?? 'Erro ao carregar' }
+    // Estoque pelo cache compartilhado (buscarEstoque): vindo de outra tela, não busca de novo
+    const [estoque, validades] = await Promise.all([
+      buscarEstoque() as Promise<unknown> as Promise<ItemEstoqueValidade[]>,
+      fetch('/api/validades/todos').then((r) => r.json()),
+    ])
+    if (!Array.isArray(validades)) return { erro: validades?.erro ?? 'Erro ao carregar' }
     return { dados: { estoque, validades } }
   } catch (e) {
     return { erro: e instanceof Error ? e.message : 'Erro de conexão' }

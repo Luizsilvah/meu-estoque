@@ -1,12 +1,10 @@
 import { createSupabaseAdmin } from '../../../lib/supabase-admin'
-import { createSupabaseServer } from '../../../lib/supabase-server'
-import { exigirPermissao } from '@/app/lib/exigirPermissao'
+import { exigirPermissao, usuarioLogado } from '@/app/lib/exigirPermissao'
 
 type LoteAdd = { data_validade: string; quantidade: number }
 
 export async function POST(request: Request) {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
   const negado = await exigirPermissao(user, 'cadastrar')
   if (negado) return negado

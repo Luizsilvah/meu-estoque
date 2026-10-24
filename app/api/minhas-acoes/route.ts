@@ -2,7 +2,7 @@
 // logado (seção "Suas últimas ações" da tela inicial do funcionário). O id vem
 // sempre da sessão no servidor, nunca do cliente.
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
-import { createSupabaseServer } from '../../lib/supabase-server'
+import { usuarioLogado } from '../../lib/exigirPermissao'
 
 export type MinhaAcao = {
   id: string
@@ -13,8 +13,7 @@ export type MinhaAcao = {
 }
 
 export async function GET() {
-  const server = await createSupabaseServer()
-  const { data: { user } } = await server.auth.getUser()
+  const user = await usuarioLogado()
   if (!user) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const admin = createSupabaseAdmin()

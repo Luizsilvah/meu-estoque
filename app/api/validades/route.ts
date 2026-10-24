@@ -1,15 +1,8 @@
 import { createSupabaseAdmin } from '../../lib/supabase-admin'
-import { createSupabaseServer } from '../../lib/supabase-server'
-import { exigirPermissao } from '../../lib/exigirPermissao'
-
-async function autenticar() {
-  const s = await createSupabaseServer()
-  const { data: { user } } = await s.auth.getUser()
-  return user
-}
+import { exigirPermissao, usuarioLogado } from '../../lib/exigirPermissao'
 
 export async function GET(request: Request) {
-  if (!await autenticar()) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
+  if (!await usuarioLogado()) return Response.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const produto_id = searchParams.get('produto_id')
@@ -27,7 +20,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const negado = await exigirPermissao(await autenticar(), 'estoque')
+  const negado = await exigirPermissao(await usuarioLogado(), 'estoque')
   if (negado) return negado
 
   const body = await request.json().catch(() => null)
@@ -52,7 +45,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const negado = await exigirPermissao(await autenticar(), 'estoque')
+  const negado = await exigirPermissao(await usuarioLogado(), 'estoque')
   if (negado) return negado
 
   const body = await request.json().catch(() => null)
@@ -72,7 +65,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const negado = await exigirPermissao(await autenticar(), 'estoque')
+  const negado = await exigirPermissao(await usuarioLogado(), 'estoque')
   if (negado) return negado
 
   const { searchParams } = new URL(request.url)

@@ -140,8 +140,9 @@ function EstoqueContent() {
   useEffect(() => {
     async function buscar() {
       try {
-        const [jsonEstoque, resForn, resPrevisao] = await Promise.all([
-          buscarEstoque(), fetch('/api/cadastro/fornecedor'), fetch('/api/previsao-compras', { cache: 'no-store' }),
+        // Tudo em paralelo (validades também): cada chamada custa uma ida ao servidor
+        const [jsonEstoque, resForn, resPrevisao, resValAll] = await Promise.all([
+          buscarEstoque(), fetch('/api/cadastro/fornecedor'), fetch('/api/previsao-compras', { cache: 'no-store' }), fetch('/api/validades/todos'),
         ])
         const jsonForn = await resForn.json()
         setDados(jsonEstoque as unknown as ItemEstoque[])
@@ -155,7 +156,6 @@ function EstoqueContent() {
         }
 
         const produtoIds: string[] = (jsonEstoque as ItemEstoque[]).map((i) => i.produtos?.id).filter(Boolean) as string[]
-        const resValAll = await fetch('/api/validades/todos')
         if (resValAll.ok) {
           const all: Validade[] = await resValAll.json()
           const mapa: Record<string, Validade[]> = {}
