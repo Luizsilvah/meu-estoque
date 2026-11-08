@@ -15,7 +15,7 @@ import type { ItemPrevisaoCompra } from '@/app/api/previsao-compras/route'
 
 type Situacao = 'CRITICO' | 'ACABA_ANTES' | 'QUINTA'
 type Filtro = 'todos' | 'critico' | 'quinta'
-type Item = ItemPrevisaoCompra & { situacao: Situacao; comprar: number; previstoQuinta: number; dias: number }
+type Item = ItemPrevisaoCompra & { situacao: Situacao; comprar: number }
 type Grupo = { fornecedor: string; itens: Item[] }
 
 const SITUACAO: Record<Situacao, { texto: string; cor: string; ordem: number }> = {
@@ -25,13 +25,14 @@ const SITUACAO: Record<Situacao, { texto: string; cor: string; ordem: number }> 
 }
 
 // ── Regra da compra (só na tela; a view continua igual) ─────────────────────
-// A compra é feita NA QUINTA, então tudo parte do que vai sobrar até lá:
+// Quem entra na lista (e com qual status) sai da previsão até a quinta:
 //   previsto_quinta = atual − consumo diário × dias até a quinta (mín. 0)
-//   Com máximo: comprar = ceil(máximo − previsto_quinta), nunca negativo
-//   Sem máximo: comprar = ceil(consumo × 7 + mínimo − previsto_quinta), mín. 1
-// Status: Crítico (hoje ≤ mínimo) › Acaba antes (previsto = 0) › Comprar na
-// quinta (previsto − consumo de 7 dias ≤ mínimo). Fora disso, ou se der
-// comprar 0, não entra na lista.
+//   Crítico (hoje ≤ mínimo) › Acaba antes (previsto = 0) › Comprar na quinta
+//   (previsto − consumo de 7 dias ≤ mínimo). Fora disso, não entra.
+// A quantidade é simples e parte do estoque de HOJE, em qualquer dia:
+//   Com máximo: comprar = máximo − atual, nunca negativo
+//   Sem máximo: comprar = mínimo − atual, no mínimo 1
+// Comprar 0 também não entra na lista.
 
 // Dias até a próxima quinta no fuso da loja (America/Bahia). Na quinta = 0.
 function diasAteQuinta(): number {
@@ -54,9 +55,9 @@ function calcular(i: ItemPrevisaoCompra, dias: number): Item | null {
   else return null
 
   const comprar = maximo > 0
-    ? Math.max(0, Math.ceil(maximo - previstoQuinta))
-    : Math.max(1, Math.ceil(consumo * 7 + minimo - previstoQuinta))
-  return { ...i, situacao, comprar, previstoQuinta, dias }
+    ? Math.max(0, Math.ceil(maximo - atual))
+    : Math.max(1, Math.ceil(minimo - atual))
+  return { ...i, situacao, comprar }
 }
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -64,16 +65,12 @@ const NUM = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 
 const valorItem = (i: Item) => (i.preco_custo != null ? i.comprar * Number(i.preco_custo) : null)
 
-// "Hoje 4 · na quinta ~2 · máximo 6 → comprar 4" (sem máximo: "mínimo X").
-// A previsão aparece arredondada para baixo: com máximo inteiro, máximo − ~N
-// dá exatamente o "comprar". Na própria quinta "hoje" já é a quinta, então o
-// trecho "na quinta" sai.
+// "Tem 4 · máximo 6 → comprar 2" (sem máximo: "Tem X · mínimo Y → comprar Z")
 function motivo(i: Item): string {
   const limite = Number(i.qtd_max) > 0
     ? `máximo ${NUM.format(Number(i.qtd_max))}`
     : `mínimo ${NUM.format(Number(i.estoque_minimo))}`
-  const quinta = i.dias > 0 ? ` · na quinta ~${NUM.format(Math.floor(i.previstoQuinta))}` : ''
-  return `Hoje ${NUM.format(Number(i.qtd_atual))}${quinta} · ${limite} → comprar ${i.comprar}`
+  return `Tem ${NUM.format(Number(i.qtd_atual))} · ${limite} → comprar ${i.comprar}`
 }
 
 // Mesma mensagem que o Checklist mandava
