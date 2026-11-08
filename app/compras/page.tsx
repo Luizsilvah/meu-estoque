@@ -15,7 +15,7 @@ import type { ItemPrevisaoCompra } from '@/app/api/previsao-compras/route'
 
 type Situacao = 'CRITICO' | 'ACABA_ANTES' | 'QUINTA'
 type Filtro = 'todos' | 'critico' | 'quinta'
-type Item = ItemPrevisaoCompra & { situacao: Situacao; comprar: number }
+type Item = ItemPrevisaoCompra & { situacao: Situacao; comprar: number; previstoQuinta: number; dias: number }
 type Grupo = { fornecedor: string; itens: Item[] }
 
 const SITUACAO: Record<Situacao, { texto: string; cor: string; ordem: number }> = {
@@ -24,23 +24,39 @@ const SITUACAO: Record<Situacao, { texto: string; cor: string; ordem: number }> 
   QUINTA:      { texto: 'Comprar na quinta',     cor: '#F59E0B', ordem: 2 },
 }
 
-// Crítico = já está no mínimo ou abaixo. Acaba antes = o consumo zera o
-// estoque antes da próxima quinta. O resto que a view manda comprar = quinta.
-function situacaoDe(i: ItemPrevisaoCompra): Situacao {
-  if (i.status === 'CRITICO') return 'CRITICO'
-  return Number(i.estoque_previsto) <= 0 ? 'ACABA_ANTES' : 'QUINTA'
+// ── Regra da compra (só na tela; a view continua igual) ─────────────────────
+// A compra é feita NA QUINTA, então tudo parte do que vai sobrar até lá:
+//   previsto_quinta = atual − consumo diário × dias até a quinta (mín. 0)
+//   Com máximo: comprar = ceil(máximo − previsto_quinta), nunca negativo
+//   Sem máximo: comprar = ceil(consumo × 7 + mínimo − previsto_quinta), mín. 1
+// Status: Crítico (hoje ≤ mínimo) › Acaba antes (previsto = 0) › Comprar na
+// quinta (previsto − consumo de 7 dias ≤ mínimo). Fora disso, ou se der
+// comprar 0, não entra na lista.
+
+// Dias até a próxima quinta no fuso da loja (America/Bahia). Na quinta = 0.
+function diasAteQuinta(): number {
+  const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bahia' }).format(new Date())
+  const dow = new Date(`${hoje}T12:00:00Z`).getUTCDay() // 0 = domingo … 4 = quinta
+  return (4 - dow + 7) % 7
 }
 
-// necessidade = qtd_sugerida da view = ceil(consumo × (dias até a quinta + 7) + mínimo − atual),
-// nunca negativa. Com máximo cadastrado: completa até o máximo, e só passa dele
-// se o consumo pedir mais. Sem máximo: a necessidade, e no mínimo 1 (o item
-// está na lista, então "comprar 0" não faz sentido).
-function quantoComprar(i: ItemPrevisaoCompra): number {
-  const necessidade = Math.max(0, Number(i.qtd_sugerida))
-  if (Number(i.qtd_max) > 0) {
-    return Math.max(Math.ceil(Number(i.qtd_max) - Number(i.qtd_atual)), necessidade)
-  }
-  return Math.max(1, necessidade)
+function calcular(i: ItemPrevisaoCompra, dias: number): Item | null {
+  const atual = Number(i.qtd_atual)
+  const minimo = Number(i.estoque_minimo)
+  const consumo = Number(i.consumo_medio_diario)
+  const maximo = Number(i.qtd_max)
+  const previstoQuinta = Math.max(0, atual - consumo * dias)
+
+  let situacao: Situacao
+  if (atual <= minimo) situacao = 'CRITICO'
+  else if (previstoQuinta <= 0) situacao = 'ACABA_ANTES'
+  else if (previstoQuinta - consumo * 7 <= minimo) situacao = 'QUINTA'
+  else return null
+
+  const comprar = maximo > 0
+    ? Math.max(0, Math.ceil(maximo - previstoQuinta))
+    : Math.max(1, Math.ceil(consumo * 7 + minimo - previstoQuinta))
+  return { ...i, situacao, comprar, previstoQuinta, dias }
 }
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -48,15 +64,16 @@ const NUM = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 
 const valorItem = (i: Item) => (i.preco_custo != null ? i.comprar * Number(i.preco_custo) : null)
 
-// "Tem 1 un · máximo 4 · gasta ~0,7 por semana → comprar 3"
-// (sem máximo cadastrado mostra o mínimo no lugar)
+// "Hoje 4 · na quinta ~2 · máximo 6 → comprar 4" (sem máximo: "mínimo X").
+// A previsão aparece arredondada para baixo: com máximo inteiro, máximo − ~N
+// dá exatamente o "comprar". Na própria quinta "hoje" já é a quinta, então o
+// trecho "na quinta" sai.
 function motivo(i: Item): string {
-  const porSemana = Number(i.consumo_medio_diario) * 7
-  const gasto = porSemana > 0 ? `gasta ~${NUM.format(porSemana)} por semana` : 'sem saída no último mês'
   const limite = Number(i.qtd_max) > 0
     ? `máximo ${NUM.format(Number(i.qtd_max))}`
     : `mínimo ${NUM.format(Number(i.estoque_minimo))}`
-  return `Tem ${NUM.format(Number(i.qtd_atual))} ${i.unidade} · ${limite} · ${gasto} → comprar ${i.comprar}`
+  const quinta = i.dias > 0 ? ` · na quinta ~${NUM.format(Math.floor(i.previstoQuinta))}` : ''
+  return `Hoje ${NUM.format(Number(i.qtd_atual))}${quinta} · ${limite} → comprar ${i.comprar}`
 }
 
 // Mesma mensagem que o Checklist mandava
@@ -77,8 +94,8 @@ function compartilharWhatsApp(texto: string) {
 }
 
 // ── "Já pedi": guardado no aparelho, por semana de compra ───────────────────
-// A chave é a data da próxima quinta (mesma conta da view: na quinta já conta a
-// seguinte), então as marcações zeram sozinhas quando a quinta chega.
+// A chave é a data da quinta da compra (na própria quinta = hoje), então as
+// marcações valem até o fim da quinta e zeram sozinhas na sexta.
 const PREFIXO = 'compras:pedidos:'
 
 function chaveDaSemana(diasAteQuinta: number): string {
@@ -131,13 +148,15 @@ export default function Compras() {
       .then((r) => r.json())
       .then((json) => {
         if (!Array.isArray(json)) { setErro(json?.erro ?? 'Erro ao carregar'); return }
+        const dias = diasAteQuinta()
         const lista = (json as ItemPrevisaoCompra[])
-          .filter((i) => i.status === 'CRITICO' || i.status === 'COMPRAR_QUINTA')
-          .map((i) => ({ ...i, situacao: situacaoDe(i), comprar: quantoComprar(i) }))
+          .map((i) => calcular(i, dias))
+          // comprar 0 (ex.: já vai chegar na quinta acima do máximo) não entra
+          // na lista — e por isso também fica fora do WhatsApp, cópia e total
+          .filter((i): i is Item => i !== null && i.comprar > 0)
         setErro('')
         setItens(lista)
-        const dias = (json as ItemPrevisaoCompra[])[0]?.dias_ate_quinta
-        if (dias != null) setChave(chaveDaSemana(Number(dias)))
+        setChave(chaveDaSemana(dias))
       })
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false))
